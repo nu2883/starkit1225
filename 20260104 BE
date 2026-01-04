@@ -143,15 +143,24 @@ function runAutomationTrigger(event, table, sourceData) {
   });
 }
 
-// --- MIGRATION ENGINE (AUTOFILL FIXED) ---
+  // --- MIGRATION ENGINE (AUTOFILL FIXED) ---
+// --- MIGRATION ENGINE (ID & TIMESTAMP FIXED) ---
 function migrateNewTable(p, user) {
   if (user.role !== 'admin') return { success: false, message: "Admin Only" };
+  
+  // 1. Standarisasi Nama Tabel
   const tableName = p.tableName.toLowerCase().replace(/[^a-z0-9_]/g, '');
   if (SS.getSheetByName(tableName)) return { success: false, message: "Duplicate Table" };
+  
+  // 2. Buat Sheet Baru
   const sheet = SS.insertSheet(tableName);
+  
+  // 3. Siapkan Header Sistem & User
   const sysH = ["id", "created_by", "created_at", "deleted_at"];
   const userH = p.fields.map(f => f.name.toLowerCase().replace(/[^a-z0-9_]/g, ''));
   const headers = [...sysH, ...userH];
+  
+  // 4. Siapkan Metadata (Baris 2)
   const hints = [
     JSON.stringify({ label: "ID", hidden: true }),
     JSON.stringify({ label: "BY", hidden: true }),
@@ -173,12 +182,38 @@ function migrateNewTable(p, user) {
       });
     })
   ];
+  
+  // 5. Eksekusi Penulisan Header & Hint
   sheet.appendRow(headers);
   sheet.appendRow(hints);
-  sheet.getRange(1, 1, 1, headers.length).setBackground("#0f172a").setFontColor("#ffffff").setFontWeight("bold");
+  
+  // Formatting Header (Dark Mode Style)
+  sheet.getRange(1, 1, 1, headers.length)
+       .setBackground("#0f172a")
+       .setFontColor("#ffffff")
+       .setFontWeight("bold");
   sheet.setFrozenRows(2);
+
+  // 6. AUTOMATION: Daftarkan Izin di config_permissions secara Otomatis
   const pSheet = SS.getSheetByName("config_permissions");
-  if (pSheet) pSheet.appendRow([tableName, "admin", "TRUE", "TRUE", "TRUE", "TRUE", "ALL", new Date().toISOString()]);
+  if (pSheet) {
+    // Generate ID Unik berbasis Timestamp (milidetik)
+    const timestampId = new Date().getTime(); 
+    
+    // Susunan Baris Baru: [ID, RESOURCE, ROLE, BROWSE, ADD, EDIT, DELETE, POLICY, CREATED_AT]
+    pSheet.appendRow([
+      timestampId,              // Kolom A: id
+      tableName,                // Kolom B: resource
+      "admin",                  // Kolom C: role
+      "TRUE",                   // Kolom D: can_browse
+      "TRUE",                   // Kolom E: can_add
+      "TRUE",                   // Kolom F: can_edit
+      "TRUE",                   // Kolom G: can_delete
+      "ALL",                    // Kolom H: ownership_policy
+      new Date().toISOString()  // Kolom I: timestamp pencatatan
+    ]);
+  }
+
   return { success: true };
 }
 
@@ -264,7 +299,7 @@ function handleLogin(d) {
 }
 
 function getGov(res, role) {
-  // JALUR KHUSUS ADMIN: Efisiensi kode agar tidak perlu lookup tabel jika role sudah admin
+  // 1. JALUR KHUSUS ADMIN (Sangat Efisien)
   if (role === 'admin') {
     return { can_browse: true, can_add: true, can_edit: true, can_delete: true, ownership_policy: "ALL" };
   }
@@ -272,16 +307,25 @@ function getGov(res, role) {
   const pSheet = SS.getSheetByName("config_permissions");
   if(!pSheet) return { can_browse: false, can_add: false, can_edit: false, can_delete: false, ownership_policy: "OWNER" };
   
-  // Ambil baris yang sesuai dengan Resource dan Role user
-  const data = pSheet.getDataRange().getValues().slice(1);
-  const p = data.find(r => r[0] === res && r[1] === role);
+  const fullData = pSheet.getDataRange().getValues();
+  const headers = fullData[0];
+  const data = fullData.slice(1);
+
+  // 2. CARI INDEKS SECARA DINAMIS (Anti-Error jika kolom ID pindah)
+  const resIdx = headers.indexOf("resource");
+  const roleIdx = headers.indexOf("role");
+
+  const p = data.find(r => String(r[resIdx]) === res && String(r[roleIdx]) === role);
   
+  if (!p) return { can_browse: false, can_add: false, can_edit: false, can_delete: false, ownership_policy: "OWNER" };
+
+  // 3. RETURN DATA BERDASARKAN HEADER
   return {
-    can_browse: p ? String(p[2]).toUpperCase() === "TRUE" : false,
-    can_add:     p ? String(p[3]).toUpperCase() === "TRUE" : false,
-    can_edit:    p ? String(p[4]).toUpperCase() === "TRUE" : false,
-    can_delete:  p ? String(p[5]).toUpperCase() === "TRUE" : false,
-    ownership_policy: p ? p[6] : "OWNER"
+    can_browse: String(p[headers.indexOf("can_browse")]).toUpperCase() === "TRUE",
+    can_add:    String(p[headers.indexOf("can_add")]).toUpperCase() === "TRUE",
+    can_edit:   String(p[headers.indexOf("can_edit")]).toUpperCase() === "TRUE",
+    can_delete: String(p[headers.indexOf("can_delete")]).toUpperCase() === "TRUE",
+    ownership_policy: p[headers.indexOf("ownership_policy")] || "OWNER"
   };
 }
 
@@ -306,9 +350,26 @@ function sanitizeObject(obj) {
 function listResources(user) {
   const pSheet = SS.getSheetByName("config_permissions");
   if(!pSheet) return { success: false, message: "Permissions Missing" };
-  const resources = pSheet.getDataRange().getValues().slice(1)
-    .filter(r => r[1] === user.role && String(r[2]).toUpperCase() === "TRUE")
-    .map(r => ({ id: r[0], label: r[0].replace(/_/g, ' ').toUpperCase() }));
+  
+  const data = pSheet.getDataRange().getValues();
+  const headers = data[0]; // Baris 1 (Header)
+  const rows = data.slice(1); // Baris data
+  
+  // Mencari posisi kolom secara otomatis berdasarkan nama headernya
+  const resIdx = headers.indexOf("resource");
+  const roleIdx = headers.indexOf("role");
+  const browseIdx = headers.indexOf("can_browse");
+
+  const resources = rows
+    .filter(r => 
+      String(r[roleIdx]) === user.role && 
+      String(r[browseIdx]).toUpperCase() === "TRUE"
+    )
+    .map(r => ({ 
+      id: r[resIdx], 
+      label: String(r[resIdx]).replace(/_/g, ' ').toUpperCase() 
+    }));
+
   return { success: true, resources };
 }
 
