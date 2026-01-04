@@ -1,0 +1,400 @@
+/**
+ * STARKIT VOYAGER ENGINE - FULL BE v39.0.0
+ * Status: STABLE + AUTOMATION ENGINE DEPLOYED
+ * Optimized for: Juragan SaaS Sheet [2025-12-28]
+ */
+
+const SS = SpreadsheetApp.getActiveSpreadsheet();
+const CACHE = CacheService.getScriptCache();
+const SESSION_EXPIRY_MS = 21600000; // 6 jam
+
+// --- API GATEWAY ---
+function doGet(e) {
+  try {
+    const { action, table, token, viewMode } = e.parameter;
+    const auth = verifyToken(token);
+    if (!auth.valid) return out({ success: false, message: "401 Unauthorized" });
+
+    switch (action) {
+      case "listResources": return out(listResources(auth.user));
+      case "read":           return out(handleRead(table, auth.user, viewMode));
+      default:               return out({ success: false, message: "Action Unknown" });
+    }
+  } catch (err) { return out({ success: false, message: "Server Error: " + err.toString() }); }
+}
+
+// --- BAGIAN DO POST ---
+function doPost(e) {
+  try {
+    const p = JSON.parse(e.postData.contents);
+    if (p.action === "login") return out(handleLogin(p));
+
+    const auth = verifyToken(p.token);
+    if (!auth.valid) return out({ success: false, message: "401 Unauthorized" });
+
+    const sanitizedData = sanitizeObject(p.data);
+
+    switch (p.action) {
+      case "migrate": return out(migrateNewTable(p.data, auth.user));
+      case "update_schema": return out(updateSchemaColumn(p.table, p.data, auth.user));
+      case "create":  return out(handleWrite("create", p.table, sanitizedData, auth.user));
+      case "update":  return out(handleWrite("update", p.table, sanitizedData, auth.user));
+      case "delete":  return out(handleWrite("delete", p.table, sanitizedData, auth.user));
+      case "restore": return out(handleWrite("restore", p.table, sanitizedData, auth.user));
+      case "create_automation": return out(saveAutomationRule(sanitizedData, auth.user));
+      
+      // 🚀 TAMBAHKAN INI JURAGAN
+      case "upsert": return out(handleUpsert(p.table, sanitizedData, auth.user)); 
+      
+      default:        return out({ success: false, message: "Action Unknown" });
+    }
+  } catch (err) { return out({ success: false, message: "Request Error: " + err.toString() }); }
+}
+
+// --- CRUD CORE ---
+function handleWrite(action, table, data, user) {
+  const sheet = SS.getSheetByName(table);
+  if (!sheet) return { success: false, message: "Table Not Found" };
+
+  const gov = getGov(table, user.role);
+  if (action === "create" && !gov.can_add) return { success: false, message: "Forbidden: Add" };
+  if (action === "update" && !gov.can_edit) return { success: false, message: "Forbidden: Edit" };
+  if (action === "delete" && !gov.can_delete) return { success: false, message: "Forbidden: Delete" };
+
+  if (action === "create" || action === "update") {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const metaRow = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    headers.forEach((h, i) => {
+      try {
+        const meta = JSON.parse(metaRow[i]);
+        if (meta && meta.formula) {
+          data[h] = evaluateFormula(meta.formula, data);
+        }
+      } catch(e){}
+    });
+  }
+
+  if (action === "create") {
+    data.id = "SK-" + Utilities.getUuid().split('-')[0].toUpperCase();
+    data.created_at = new Date().toISOString();
+    data.created_by = user.email;
+    data.deleted_at = ""; 
+    appendToSheet(table, data);
+    runAutomationTrigger("CREATE", table, data); // TRIGGER OTOMASI
+  } else if (action === "update") {
+    updateInSheet(table, data);
+    runAutomationTrigger("UPDATE", table, data); // TRIGGER OTOMASI
+  } else if (action === "delete") {
+    setDeletedStatus(table, data.id, true);
+  } else if (action === "restore") {
+    setDeletedStatus(table, data.id, false);
+  }
+
+  logAudit(user.email, action.toUpperCase(), table, data.id || "N/A");
+  return { success: true, data: { id: data.id } };
+}
+
+// --- AUTOMATION ENGINE CORE ---
+function saveAutomationRule(data, user) {
+  if (user.role !== 'admin') return { success: false, message: "Admin Only" };
+  const sheet = SS.getSheetByName("automations") || SS.insertSheet("automations");
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["event", "source_table", "if_field", "if_op", "if_value", "target_table", "then_field", "then_mode", "then_value", "match_field", "match_source"]);
+  }
+  sheet.appendRow([data.event, data.source_table, data.if_field, data.if_op, data.if_value, data.target_table, data.then_field, data.then_mode, data.then_value, data.match_field, data.match_source]);
+  return { success: true, message: "Automation Deployed" };
+}
+
+function runAutomationTrigger(event, table, sourceData) {
+  const autoSheet = SS.getSheetByName("automations");
+  if (!autoSheet) return;
+  const rules = autoSheet.getDataRange().getValues().slice(1);
+  
+  rules.filter(r => r[0] === event && r[1] === table).forEach(rule => {
+    const [ev, srcT, ifF, ifOp, ifV, tarT, thenF, thenM, thenV, matF, matS] = rule;
+    
+    // Check Condition
+    if (ifF) {
+      const actual = sourceData[ifF];
+      let pass = false;
+      if (ifOp === ">") pass = actual > ifV;
+      if (ifOp === "=") pass = String(actual) === String(ifV);
+      if (ifOp === "<") pass = actual < ifV;
+      if (!pass) return;
+    }
+
+    const targetSheet = SS.getSheetByName(tarT);
+    if (!targetSheet) return;
+    const targetRows = targetSheet.getDataRange().getValues();
+    const headers = targetRows[0];
+    const matchVal = String(sourceData[matS.replace(/{|}/g, '')]);
+    const matchColIdx = headers.indexOf(matF);
+    
+    for (let i = 2; i < targetRows.length; i++) {
+      if (String(targetRows[i][matchColIdx]) === matchVal) {
+        const thenColIdx = headers.indexOf(thenF);
+        const currentVal = Number(targetRows[i][thenColIdx]) || 0;
+        const change = evaluateFormula(thenV, sourceData);
+        const newVal = (thenM === "MUTATE") ? currentVal + change : change;
+        targetSheet.getRange(i + 1, thenColIdx + 1).setValue(newVal);
+      }
+    }
+  });
+}
+
+// --- MIGRATION ENGINE (AUTOFILL FIXED) ---
+function migrateNewTable(p, user) {
+  if (user.role !== 'admin') return { success: false, message: "Admin Only" };
+  const tableName = p.tableName.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  if (SS.getSheetByName(tableName)) return { success: false, message: "Duplicate Table" };
+  const sheet = SS.insertSheet(tableName);
+  const sysH = ["id", "created_by", "created_at", "deleted_at"];
+  const userH = p.fields.map(f => f.name.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+  const headers = [...sysH, ...userH];
+  const hints = [
+    JSON.stringify({ label: "ID", hidden: true }),
+    JSON.stringify({ label: "BY", hidden: true }),
+    JSON.stringify({ label: "CREATED", hidden: true }),
+    JSON.stringify({ label: "DELETED", hidden: true }),
+    ...p.fields.map(f => {
+      const safeLabel = (f.label && f.label.trim() !== "") ? f.label : f.name.replace(/_/g, ' ').toUpperCase();
+      return JSON.stringify({
+        label: safeLabel.toUpperCase(),
+        type: (f.type || "TEXT").toUpperCase(),
+        hidden: !f.show,
+        required: f.required || false,
+        disabled: f.disabled || false,
+        formula: (f.formula && f.formula.trim() !== "") ? f.formula : null,
+        lookup: f.type === "LOOKUP" ? { table: f.relTable, field: f.relField } : null,
+        autoTrigger: f.autoTrigger || f.trigger || null,
+        autoTable: f.autoTable || f.relTable || null,
+        autoCol: f.autoCol || f.lookupKey || null
+      });
+    })
+  ];
+  sheet.appendRow(headers);
+  sheet.appendRow(hints);
+  sheet.getRange(1, 1, 1, headers.length).setBackground("#0f172a").setFontColor("#ffffff").setFontWeight("bold");
+  sheet.setFrozenRows(2);
+  const pSheet = SS.getSheetByName("config_permissions");
+  if (pSheet) pSheet.appendRow([tableName, "admin", "TRUE", "TRUE", "TRUE", "TRUE", "ALL", new Date().toISOString()]);
+  return { success: true };
+}
+
+// --- UTILS & SECURITY ---
+function updateSchemaColumn(table, data, user) {
+  if (user.role !== 'admin') return { success: false, message: "Admin Only" };
+  const sheet = SS.getSheetByName(table);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const colIdx = headers.indexOf(data.targetColumn);
+  if (colIdx === -1) return { success: false, message: "Column Not Found" };
+  sheet.getRange(2, colIdx + 1).setValue(JSON.stringify(data.config));
+  return { success: true };
+}
+
+function handleRead(tableName, user, viewMode = "active") {
+  const sheet = SS.getSheetByName(tableName);
+  if (!sheet) return { success: false, message: "Not Found" };
+  const gov = getGov(tableName, user.role);
+  if (!gov.can_browse) return { success: false, message: "Forbidden" };
+  
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const hints = data[1] || [];
+  const rows = data.slice(2);
+  const schema = {};
+  headers.forEach((h, i) => { schema[h] = parseHint(hints[i], h); });
+
+  const formattedRows = rows.map(r => {
+    let o = {};
+    headers.forEach((h, i) => o[h] = r[i]);
+    return o;
+  }).filter(r => {
+    // JALUR KHUSUS CONFIG: Jika tabel diawali 'config_', jangan difilter ID/Deleted-nya
+    if (tableName.startsWith('config_')) return true;
+
+    // JALUR STANDAR (Logic Asli Juragan): Tetap aman untuk tabel produk, buku, dll
+    if (!r.id) return false;
+    const isDeleted = r.deleted_at && r.deleted_at !== "";
+    const matchesView = (viewMode === "trash") ? isDeleted : !isDeleted;
+    const matchesOwner = (gov.ownership_policy === "OWNER") ? r.created_by === user.email : true;
+    return matchesView && matchesOwner;
+  });
+
+  // Bagian Modes tetap saya pertahankan agar UI Table tidak Error
+  return {
+    success: true, rows: formattedRows, schema: schema,
+    modes: {
+      browse: { fields: headers.filter(h => !schema[h].hidden) },
+      add:    { can: gov.can_add, fields: headers.filter(h => !["id", "created_by", "created_at", "deleted_at"].includes(h)) },
+      edit:   { can: gov.can_edit, fields: headers.filter(h => !["id", "created_by", "created_at", "deleted_at"].includes(h)) },
+      delete: { can: gov.can_delete }
+    }
+  };
+}
+
+function evaluateFormula(formula, data) {
+  try {
+    let solved = String(formula).replace(/{(\w+)}/g, (match, key) => {
+      let val = data[key];
+      return (val === undefined || val === "") ? 0 : val;
+    });
+    return new Function('return ' + solved)();
+  } catch (e) { return 0; }
+}
+
+function verifyToken(t) {
+  if (!t) return { valid: false };
+  const cached = CACHE.get("sess_" + t);
+  if (cached) return { valid: true, user: JSON.parse(cached) };
+  return { valid: false };
+}
+
+function handleLogin(d) {
+  const uSheet = SS.getSheetByName("users");
+  if(!uSheet) return { success: false, message: "User Table Missing" };
+  const data = uSheet.getDataRange().getValues().slice(1);
+  const user = data.find(r => r[1] === d.email && r[2] === d.password);
+  if (!user) return { success: false, message: "Invalid Credentials" };
+  const token = Utilities.getUuid();
+  const sessionData = { email: user[1], role: user[3] };
+  CACHE.put("sess_" + token, JSON.stringify(sessionData), SESSION_EXPIRY_MS / 1000);
+  return { success: true, token, role: user[3], email: user[1] };
+}
+
+function getGov(res, role) {
+  // JALUR KHUSUS ADMIN: Efisiensi kode agar tidak perlu lookup tabel jika role sudah admin
+  if (role === 'admin') {
+    return { can_browse: true, can_add: true, can_edit: true, can_delete: true, ownership_policy: "ALL" };
+  }
+
+  const pSheet = SS.getSheetByName("config_permissions");
+  if(!pSheet) return { can_browse: false, can_add: false, can_edit: false, can_delete: false, ownership_policy: "OWNER" };
+  
+  // Ambil baris yang sesuai dengan Resource dan Role user
+  const data = pSheet.getDataRange().getValues().slice(1);
+  const p = data.find(r => r[0] === res && r[1] === role);
+  
+  return {
+    can_browse: p ? String(p[2]).toUpperCase() === "TRUE" : false,
+    can_add:     p ? String(p[3]).toUpperCase() === "TRUE" : false,
+    can_edit:    p ? String(p[4]).toUpperCase() === "TRUE" : false,
+    can_delete:  p ? String(p[5]).toUpperCase() === "TRUE" : false,
+    ownership_policy: p ? p[6] : "OWNER"
+  };
+}
+
+function parseHint(s, h) {
+  try {
+    const o = JSON.parse(s);
+    return { ...o, type: (o.type || "text").toLowerCase() };
+  } catch(e) { return { label: h.toUpperCase(), type: "text", hidden: false }; }
+}
+
+function sanitizeObject(obj) {
+  if (!obj) return {};
+  const sanitized = {};
+  for (let key in obj) {
+    if (typeof obj[key] === 'string') {
+      sanitized[key] = obj[key].replace(/<\/?[^>]+(>|$)/g, "");
+    } else { sanitized[key] = obj[key]; }
+  }
+  return sanitized;
+}
+
+function listResources(user) {
+  const pSheet = SS.getSheetByName("config_permissions");
+  if(!pSheet) return { success: false, message: "Permissions Missing" };
+  const resources = pSheet.getDataRange().getValues().slice(1)
+    .filter(r => r[1] === user.role && String(r[2]).toUpperCase() === "TRUE")
+    .map(r => ({ id: r[0], label: r[0].replace(/_/g, ' ').toUpperCase() }));
+  return { success: true, resources };
+}
+
+function logAudit(user, action, resource, targetId) {
+  const sheet = SS.getSheetByName("audit_log");
+  if (sheet) sheet.appendRow([new Date().toISOString(), user, action, resource, targetId]);
+}
+
+function out(o) {
+  return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateInSheet(tableName, data) {
+  const sheet = SS.getSheetByName(tableName);
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const idIdx = headers.indexOf("id");
+  for (let i = 2; i < rows.length; i++) {
+    if (rows[i][idIdx] === data.id) {
+      const newRow = headers.map(h => data[h] !== undefined ? data[h] : rows[i][headers.indexOf(h)]);
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([newRow]);
+      return;
+    }
+  }
+}
+
+function appendToSheet(tableName, data) {
+  const sheet = SS.getSheetByName(tableName);
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const row = headers.map(h => data[h] !== undefined ? data[h] : "");
+  sheet.appendRow(row);
+}
+
+function setDeletedStatus(tableName, id, status) {
+  const sheet = SS.getSheetByName(tableName);
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const idIdx = headers.indexOf("id");
+  const delIdx = headers.indexOf("deleted_at");
+  for (let i = 2; i < rows.length; i++) {
+    if (rows[i][idIdx] === id) {
+      sheet.getRange(i + 1, delIdx + 1).setValue(status ? new Date().toISOString() : "");
+      return;
+    }
+  }
+}
+
+function handleUpsert(tableName, data, user) {
+  let sheet = SS.getSheetByName(tableName);
+  
+  // 1. Jika tabel config_dashboard belum ada, buatkan otomatis
+  if (!sheet) {
+    sheet = SS.insertSheet(tableName);
+    sheet.appendRow(["id", "config_json", "updated_at"]);
+    // Beri warna header agar profesional
+    sheet.getRange(1,1,1,3).setBackground("#0f172a").setFontColor("#ffffff").setFontWeight("bold");
+    // Baris Hint agar tidak error saat dibaca handleRead
+    sheet.appendRow([
+      JSON.stringify({label:"ID", hidden:true}), 
+      JSON.stringify({label:"CONFIG", type:"TEXT"}), 
+      JSON.stringify({label:"UPDATED", type:"TEXT"})
+    ]);
+  }
+
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const idIdx = headers.indexOf("id");
+  
+  // 2. Cari ID (Misal: USER_DASHBOARD_1)
+  let rowIndex = -1;
+  for (let i = 2; i < rows.length; i++) {
+    if (String(rows[i][idIdx]) === String(data.id)) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+
+  const newRowData = headers.map(h => data[h] !== undefined ? data[h] : "");
+
+  if (rowIndex > 0) {
+    // 3. Update baris yang ada
+    sheet.getRange(rowIndex, 1, 1, headers.length).setValues([newRowData]);
+    return { success: true, message: "Config Updated" };
+  } else {
+    // 4. Tambah baris baru
+    sheet.appendRow(newRowData);
+    return { success: true, message: "Config Created" };
+  }
+}
