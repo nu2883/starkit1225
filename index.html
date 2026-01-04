@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STARKIT VOYAGER - JURAGAN MODE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .sidebar-active { background: #1e293b; color: #f8fafc; border-left: 4px solid #3b82f6; }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+
+<body class="bg-[#f8fafc] text-slate-800 font-sans antialiased overflow-hidden">
+  <div id="app" class="flex h-screen">
+
+    <div id="login-screen" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-[100]">
+      <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center animate-fade-in">
+        <div class="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/40">
+          <i class="fa-solid fa-shuttle-space text-white text-2xl"></i>
+        </div>
+        <h1 class="text-3xl font-black text-slate-900 tracking-tight">STARKIT</h1>
+        <p class="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1 mb-8">Juragan SaaS Engine</p>
+        <div class="space-y-4">
+          <input id="login-email" type="email" placeholder="Email Juragan" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm">
+          <input id="login-pass" type="password" placeholder="Password" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm">
+         <button 
+  id="btn-login" 
+  onclick="app.login()" 
+  class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all uppercase tracking-widest text-xs"
+>
+  Authorize Access
+</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="w-72 bg-[#0f172a] text-slate-400 flex flex-col h-full shadow-2xl z-20">
+      <div class="p-8 flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white"><i class="fa-solid fa-bolt"></i></div>
+        <span class="text-white font-black text-xl tracking-tighter uppercase">Starkit</span>
+      </div>
+
+      <nav class="flex-1 px-4 space-y-6 overflow-y-auto">
+        <div>
+          <button id="nav-dashboard" onclick="app.openDashboard()" class="nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all hover:bg-white/5">
+            <i class="fa-solid fa-house text-sm"></i>
+            <span class="font-black text-[11px] uppercase tracking-widest">Dashboard</span>
+          </button>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-[10px] font-black uppercase tracking-[0.2em] px-4 opacity-40 text-white">Databases</p>
+          <div id="resource-list" class="space-y-1"></div>
+        </div>
+
+        <div id="system-tools" class="hidden space-y-2 pt-4 border-t border-white/5">
+          <p class="text-[10px] font-black uppercase tracking-[0.2em] px-4 opacity-40 text-red-400 flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Engineering Lab
+          </p>
+          <div id="sidebar-container-new" class="space-y-1"></div>
+        </div>
+      </nav>
+
+      <div class="p-6 bg-[#1e293b]/50 m-4 rounded-3xl border border-white/5">
+        <div class="flex items-center gap-3 mb-4">
+          <div id="u-avatar" class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xs shadow-lg shadow-blue-500/20">?</div>
+          <div class="overflow-hidden">
+            <p id="u-email" class="text-[10px] font-bold text-white truncate"></p>
+            <p id="u-role" class="text-[9px] uppercase font-black text-blue-400 tracking-widest"></p>
+          </div>
+        </div>
+        <button onclick="app.logout()" class="w-full py-2.5 text-[10px] font-black text-red-400 hover:bg-red-500/10 rounded-xl uppercase tracking-widest transition-all border border-red-500/20">Logout System</button>
+      </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col min-w-0 bg-[#f8fafc]">
+      <header class="h-20 bg-white border-b px-8 flex items-center justify-between z-10">
+        <div class="flex items-center gap-6 flex-1">
+          <h2 id="cur-title" class="font-black text-2xl text-slate-800 tracking-tight whitespace-nowrap">Dashboard</h2>
+          
+          <div id="search-container" class="hidden flex items-center gap-4 flex-1 max-w-2xl animate-fade-in">
+            <div class="relative flex-1 group">
+              <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors"></i>
+              <input id="global-search" type="text" oninput="app.filterTable(this.value)" placeholder="Search data..." class="w-full bg-slate-100 border-2 border-transparent rounded-2xl py-2 pl-11 pr-4 text-sm font-bold focus:bg-white focus:border-blue-500 outline-none transition-all">
+            </div>
+            <select id="view-mode" onchange="app.loadResource()" class="bg-slate-100 text-[10px] font-black uppercase px-4 py-2.5 rounded-xl outline-none cursor-pointer hover:bg-slate-200 transition-colors border-none">
+                <option value="active">Active</option>
+                <option value="trash">Trash</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="btn-refresh" onclick="app.loadResource(true)" class="p-3 text-slate-400 hover:text-blue-500 transition-all hover:bg-blue-50 rounded-xl">
+            <i class="fa-solid fa-sync text-sm"></i>
+          </button>
+          <button id="btn-add" onclick="app.openForm()" class="hidden bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest flex items-center gap-2">
+            <i class="fa-solid fa-plus text-xs"></i> Create New
+          </button>
+          
+        </div>
+      </header>
+
+      <div id="scroll-area" class="flex-1 overflow-auto p-8">
+        
+        <div id="view-crud" class="hidden animate-fade-in">
+          <div class="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead id="t-head" class="bg-slate-50/50 border-b"></thead>
+                <tbody id="t-body" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+            <div id="empty-state" class="hidden p-24 text-center">
+              <div class="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-4 text-slate-200">
+                <i class="fa-solid fa-box-open text-3xl"></i>
+              </div>
+              <p class="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">No Data Found In This Orbit</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="view-dashboard" class="hidden animate-fade-in">
+          <div id="dashboard-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+        </div>
+
+      </div>
+    </main>
+
+    <div id="f-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-[110] backdrop-blur-md p-4">
+      <div class="bg-white rounded-[3rem] shadow-2xl w-full max-w-xl animate-fade-in overflow-hidden border border-white/20">
+        <div class="p-8 border-b bg-white flex justify-between items-center">
+          <div>
+            <h4 class="text-xl font-black text-slate-900 tracking-tight" id="modal-title">Entry Details</h4>
+            <p class="text-[9px] font-black uppercase text-blue-500 tracking-widest mt-1">Data Management System</p>
+          </div>
+          <button onclick="app.closeForm()" class="w-10 h-10 rounded-full hover:bg-slate-100 text-slate-400 transition-all"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="f-fields" class="p-8 space-y-6 max-h-[55vh] overflow-y-auto"></div>
+        <div class="p-8 bg-slate-50 flex gap-4 border-t border-slate-100">
+          <button onclick="app.closeForm()" class="flex-1 font-black text-slate-400 hover:text-slate-600 uppercase text-[10px] tracking-widest transition-all">Discard</button>
+          <button id="btn-commit" onclick="app.save(event)" class="flex-[2] py-4 font-black bg-blue-600 text-white rounded-2xl shadow-xl shadow-blue-500/30 hover:bg-blue-700 transition-all uppercase text-[10px] tracking-widest active:scale-[0.98]">
+            Commit Data
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/sidebar.js"></script>
+  <script>
+    // Inisialisasi setelah semua load
+    window.addEventListener('load', () => {
+      Sidebar.init();
+    });
+  </script>
+
+  <script>
+    const BASE_URL = 'https://script.google.com/macros/s/AKfycbxh1foEg_C7IlblKyZC-o4MtQblzFplUz6_CzZijJtk-cBE91oY-hS0gGJ8eK0wW-smjA/exec';
+
+    function showLoading(status) {
+      const loader = document.getElementById('loader'); // Pastikan ID ini ada di HTML Anda
+      if (!loader) return;
+      status ? loader.classList.remove('hidden') : loader.classList.add('hidden');
+    }
+
+    window.app = {
+      token: localStorage.getItem('sk_token'),
+      role: localStorage.getItem('sk_role'),
+      email: localStorage.getItem('sk_email'),
+      currentTable: '',
+      schema: {},
+      modes: {},
+      editingId: null,
+      isSubmitting: false,
+      resourceCache: {},
+      schemaCache: {},
+      allResources: [],
+      dataCache: {},
+      widgetResults: [],
+      sortState: {
+        column: null,
+        direction: null // 'asc' | 'desc' | null
+      },
+      dashboardConfigs: JSON.parse(localStorage.getItem('sk_dashboard_config')) || [],
+
+      async get(params) {
+        try {
+          const q = new URLSearchParams({ ...params, token: this.token }).toString();
+          const res = await fetch(`${BASE_URL}?${q}`);
+          return await res.json();
+        } catch (e) { return { success: false, message: "Koneksi Terputus" }; }
+      },
+
+      // --- CORE ENGINE (ANTI ERROR & AUTO SYNC) ---
+      async login() {
+        const btn = document.getElementById('btn-login');
+        const emailEl = document.getElementById('login-email');
+        const passEl = document.getElementById('login-pass');
+
+        // Validasi sederhana jika element tidak ditemukan
+        if (!emailEl || !passEl) return;
+
+        const email = emailEl.value;
+        const pass = passEl.value;
+
+        // Visual loading
+        btn.innerText = "AUTHORIZING...";
+        btn.classList.add('btn-loading');
+
+        try {
+          // Menggunakan fetch langsung ke BASE_URL seperti pola yang sudah jalan
+          const response = await fetch(BASE_URL, {
+            method: 'POST',
+            // Gunakan mode: 'cors' jika Google Apps Script sudah diset output JSON-nya
+            body: JSON.stringify({
+              action: 'login',
+              email: email,
+              password: pass
+            })
+          });
+
+          const res = await response.json();
+
+          if (res.success) {
+            // Simpan data persis seperti permintaan awal Anda
+            localStorage.setItem('sk_token', res.token);
+            localStorage.setItem('sk_role', res.role);
+            localStorage.setItem('sk_email', email);
+
+            location.reload(); // Refresh untuk masuk ke dashboard
+          } else {
+            alert("Akses Ditolak!");
+            btn.innerText = "AUTHORIZE";
+            btn.classList.remove('btn-loading');
+          }
+
+        } catch (e) {
+          console.error("Login Error:", e);
+
+
+
+          alert("Gagal terhubung ke server!");
+          btn.innerText = "AUTHORIZE";
+          btn.classList.remove('btn-loading');
+        }
+      },
+
+      logout() { localStorage.clear(); location.reload(); },
+
+      async openForm(data = null) {
+        this.editingId = data ? data.id : null;
+        document.getElementById('modal-title').innerText = this.editingId ? 'EDIT ENTRY' : 'NEW ENTRY';
+
+        // Memilih fields berdasarkan apakah ini ADD atau EDIT
+        const fields = this.editingId ? this.modes.edit.fields : this.modes.add.fields;
+        const container = document.getElementById('f-fields');
+        document.getElementById('f-modal').classList.replace('hidden', 'flex');
+
+        // Render Skeleton/Loading awal
+        container.innerHTML = fields.map(() => `<div class="mb-4 animate-pulse"><div class="h-3 w-20 bg-slate-200 rounded mb-2"></div><div class="h-12 bg-slate-100 rounded-2xl"></div></div>`).join('');
+
+        let html = '';
+        for (const f of fields) {
+          const s = this.schema[f] || { type: 'text', label: f };
+          const val = data ? data[f] : '';
+
+          // Logic Locking: Autofill dan Formula otomatis di-lock
+          const isLocked = (String(s.disabled).toLowerCase() === 'true') || (s.formula && String(s.formula) !== "null") || (s.type === 'AUTOFILL');
+          const lockClass = isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-dashed opacity-75' : 'bg-slate-50 text-slate-700';
+
+          html += `<div class="mb-4">
+            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">${s.label} ${s.required ? '<span class="text-red-500">*</span>' : ''} ${isLocked ? '<i class="fa-solid fa-lock ml-1 text-slate-300"></i>' : ''}</label>`;
+
+          if (s.type === 'lookup' && s.lookup) {
+            html += `<select id="f-${f}" onchange="app.triggerLookup('${f}', this.value)" class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">
+              <option value="">-- Pilih --</option>
+            </select>`;
+          } else {
+            const type = (s.type === 'number' || s.type === 'currency') ? 'number' : (s.type === 'date' ? 'date' : 'text');
+            html += `<input id="f-${f}" type="${type}" value="${val}" ${isLocked ? 'disabled' : ''} oninput="app.runLiveFormula()" 
+                class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">`;
+          }
+          if (isLocked) html += `<input type="hidden" id="f-${f}-hidden" value="${val}">`;
+          html += `</div>`;
+        }
+        container.innerHTML = html;
+
+        // Populate isi dropdown dan jalankan trigger jika ada data awal (Edit Mode)
+        for (const f of fields) {
+          const s = this.schema[f];
+          if (s?.type === 'lookup' && s.lookup) {
+            const currentVal = data ? data[f] : '';
+            await this.populateLookup(f, s.lookup.table, s.lookup.field, currentVal);
+            if (currentVal) await this.triggerLookup(f, currentVal);
+          }
+        }
+        this.runLiveFormula();
+      },
+
+      async remove(id) {
+        if (confirm('Hapus Permanent?')) {
+          const res = await this.post('delete', { id });
+          if (res.success) {
+            delete this.resourceCache[this.currentTable];
+            this.loadResource(true);
+          } else {
+            alert("Gagal Hapus: " + res.message);
+          }
+        }
+      },
+
+      async populateLookup(id, table, field, currentVal) {
+        const el = document.getElementById(`f-${id}`);
+        const opts = await this.getLookupOptions(table, field);
+        if (el) el.innerHTML = `<option value="">-- Pilih --</option>` + opts.map(opt => `<option value="${opt}" ${String(opt) === String(currentVal) ? 'selected' : ''}>${opt}</option>`).join('');
+      },
+
+      async getLookupOptions(table, field) {
+        if (this.resourceCache[table]) return [...new Set(this.resourceCache[table].map(r => r[field]))].filter(v => v);
+        const res = await this.get({ action: 'read', table: table });
+        if (res.success) {
+          this.resourceCache[table] = res.rows;
+          return [...new Set(res.rows.map(r => r[field]))].filter(v => v);
+        }
+        return [];
+      },
+
+      updateFieldValue(id, val) {
+        const el = document.getElementById(`f-${id}`);
+        const hid = document.getElementById(`f-${id}-hidden`);
+        if (el) el.value = val;
+        if (hid) hid.value = val;
+      },
+
+      runLiveFormula() {
+        for (let key in this.schema) {
+          if (this.schema[key].formula) {
+            let formula = this.schema[key].formula;
+            let solved = formula.replace(/{(\w+)}/g, (match, f) => {
+              const el = document.getElementById(`f-${f}`);
+              const hid = document.getElementById(`f-${f}-hidden`);
+              return (hid ? hid.value : el?.value) || 0;
+            });
+            try {
+              const result = eval(solved);
+              this.updateFieldValue(key, result);
+            } catch (e) { }
+          }
+        }
+      },
+
+      async save(e) {
+        if (this.isSubmitting) return;
+        const btn = document.getElementById('btn-commit');
+        const data = { id: this.editingId };
+        const fields = this.editingId ? this.modes.edit.fields : this.modes.add.fields;
+
+        let valid = true;
+        fields.forEach(f => {
+          const hid = document.getElementById(`f-${f}-hidden`);
+          const el = document.getElementById(`f-${f}`);
+          const val = hid ? hid.value : (el ? el.value : '');
+          if (this.schema[f]?.required && !val) { alert(`Wajib: ${this.schema[f].label}`); valid = false; }
+          data[f] = val;
+        });
+
+        if (!valid) return;
+        this.isSubmitting = true;
+        btn.innerText = "SAVING...";
+        const res = await this.post(this.editingId ? 'update' : 'create', data);
+        if (res.success) {
+          delete this.resourceCache[this.currentTable];
+          this.closeForm();
+          this.loadResource();
+        }
+        this.isSubmitting = false;
+        btn.innerText = "COMMIT DATA";
+      },
+
+      closeForm() { document.getElementById('f-modal').classList.replace('flex', 'hidden'); },
+
+      // Pastikan ini di dalam window.app = { ... }
+      editSchemaShortcut(tableName) {
+        // 1. Pindah tampilan ke App Studio
+        if (window.Sidebar) {
+          Sidebar.open('appstudio', 'nav-appstudio', 'APP STUDIO');
+        }
+
+        // 2. Beri jeda agar DOM ter-render, lalu picu pengisian data
+        setTimeout(() => {
+          const selector = document.getElementById('st-table-selector');
+          if (selector) {
+            selector.value = tableName;
+            // Ini kuncinya: memicu fungsi load yang sudah ada di App Studio
+            selector.dispatchEvent(new Event('change'));
+
+            // Scroll ke atas container agar langsung terlihat form-nya
+            const scrollArea = document.getElementById('scroll-area');
+            if (scrollArea) scrollArea.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        }, 300);
+      },
+
+      // --- DASHBOARD SECTION ---
+      filterData(query) {
+        // 1. Ambil data asli dari cache berdasarkan tabel yang aktif
+        const originalData = this.resourceCache[this.currentTable];
+        if (!originalData) return;
+
+        // 2. Jika query kosong, tampilkan semua data
+        if (!query || query.trim() === "") {
+          this.renderTable(originalData);
+          return;
+        }
+
+        const q = query.toLowerCase();
+
+        // 3. Filter data berdasarkan semua kolom yang terlihat (fields)
+        const fields = this.modes.browse.fields;
+        const filteredRows = originalData.filter(row => {
+          return fields.some(f => {
+            const value = String(row[f] || "").toLowerCase();
+            return value.includes(q);
+          });
+        });
+
+        // 4. Render ulang hanya bagian body tabel
+        this.renderTable(filteredRows);
+      },
+
+      filterTable(keyword = '') {
+    if (!this.rowsRaw) return;
+
+    const q = keyword.toLowerCase().trim();
+
+    if (!q) {
+        this.rowsView = [...this.rowsRaw];
+        return this.renderTable(this.rowsView);
+    }
+
+    const fields = this.modes?.browse?.fields || [];
+
+    this.rowsView = this.rowsRaw.filter(row =>
+        fields.some(f =>
+            String(row[f] ?? '')
+                .toLowerCase()
+                .includes(q)
+        )
+    );
+
+    this.renderTable(this.rowsView);
+},
+
+async selectResource(id) {
+  this.clearStage();
+  // ====== HARD RESET VIEW ======
+  const vCrud   = document.getElementById('view-crud');
+  const vDash   = document.getElementById('view-dashboard');
+  const vSearch = document.getElementById('search-container');
+
+  // ❗ INI KUNCI UTAMA
+  vCrud?.classList.remove('hidden');
+  vSearch?.classList.remove('hidden');
+  vDash?.classList.add('hidden');
+
+  // ====== STATE ======
+  this.currentTable = id;
+  this.currentView  = 'data';
+
+  const titleEl = document.getElementById('cur-title');
+  if (titleEl) titleEl.innerText = id.replace(/_/g, ' ').toUpperCase();
+
+  // ====== RESET TABLE ======
+  document.getElementById('t-head').innerHTML = '';
+  document.getElementById('t-body').innerHTML = '';
+
+  // ====== SIDEBAR ACTIVE ======
+  this.syncSidebarUI(id);
+
+  // ====== LOAD DATA ======
+  const cached = this.schemaCache[id];
+
+  if (cached && this.resourceCache[id]) {
+    this.schema = cached.schema || {};
+    this.modes  = cached.modes  || {};
+    this.applyPermissions();
+    this.renderTable(this.resourceCache[id]);
+
+    // silent refresh
+    this.loadResource();
+  } else {
+    this.modes = {};
+    this.applyPermissions();
+    await this.loadResource();
+  }
+}
+,
+
+
+
+renderSidebar() {
+  const list = document.getElementById('resource-list');
+  if (!list) return;
+
+  const unique = [...new Map(
+    this.allResources.map(r => [r.id, r])
+  ).values()];
+
+  list.innerHTML = unique.map(r => `
+    <button
+      onclick="app.selectResource('${r.id}')"
+      id="db-${r.id}"
+      class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl
+             font-bold text-sm uppercase tracking-wider text-slate-300
+             hover:bg-slate-800 transition-all text-left">
+      <i class="fa-solid fa-database text-[11px] opacity-50"></i>
+      <span class="truncate">${r.id}</span>
+    </button>
+  `).join('');
+},
+
+
+openSchema(table) {
+  // 1. set context
+  this.currentTable = table;
+
+  // 2. highlight db aktif
+  document.querySelectorAll('[id^="db-"]').forEach(b =>
+    b.classList.remove('bg-slate-800', 'text-white')
+  );
+
+  const btn = document.getElementById(`db-${table}`);
+  if (btn) btn.classList.add('bg-slate-800', 'text-white');
+
+  // 3. buka module lewat SATU PINTU
+  Sidebar.open(
+    'schemaexplorer',
+    'sys-schemaexplorer',
+    'Schema Explorer'
+  );
+},
+
+
+      resetViews() {
+        // Daftar semua container view yang ada di HTML
+        const views = [
+          'view-crud',
+          'view-app-studio',
+          'view-schema-explorer',
+          'view-dashboard',
+          'view-dashboard-builder', // Tambahkan ini agar tidak "nyangkut"
+          'automation-builder-section',
+          'view-permissions'
+        ];
+
+        views.forEach(v => {
+          const el = document.getElementById(v);
+          if (el) el.classList.add('hidden');
+        });
+
+        // Sembunyikan juga elemen header yang spesifik untuk tabel
+        document.getElementById('search-container')?.classList.add('hidden');
+        document.getElementById('btn-add')?.classList.add('hidden');
+        document.getElementById('view-mode')?.classList.add('hidden');
+      },
+
+      syncSidebarUI(id) {
+        // 1. Bersihkan semua status active dari semua tombol navigasi
+        document.querySelectorAll('.nav-btn, aside nav button').forEach(btn => {
+          btn.classList.remove('sidebar-active', 'bg-[#1e293b]', 'text-white');
+          btn.classList.add('text-slate-400');
+        });
+
+        // 2. Cari tombol yang diklik berdasarkan ID-nya
+        // id bisa berupa: 'dashboard', 'dashboard-builder', 'app-studio', atau 'NAMA_TABEL'
+        const targetId = `nav-${id.toLowerCase().replace(/_/g, '-')}`;
+        const activeBtn = document.getElementById(targetId);
+
+        if (activeBtn) {
+          activeBtn.classList.add('sidebar-active', 'bg-[#1e293b]', 'text-white');
+          activeBtn.classList.remove('text-slate-400');
+        }
+
+        // 3. Update Judul di Header
+        const titleMap = {
+          'dashboard': 'Dashboard Overview',
+          'dashboard-builder': 'Dashboard Architect',
+          'app-studio': 'Table Architect',
+          'schema-explorer': 'Schema Explorer'
+        };
+
+        document.getElementById('cur-title').innerText = titleMap[id] || id.replace(/_/g, ' ').toUpperCase();
+      },
+
+      // --- AUTOMATION ENGINE ---
+      showAutomationBuilder: function () {
+        this.resetViews();
+        const section = document.getElementById('automation-builder-section');
+        if (section) {
+          section.classList.remove('hidden');
+          document.getElementById('cur-title').innerText = "Automation Engine";
+          this.renderAutomationBuilder();
+        } else {
+          console.error("ID 'automation-builder-section' tidak ditemukan di HTML");
+        }
+      },
+
+      // --- PERBAIKAN TRIGGER LOOKUP & AUTOFILL (VERSI JURAGAN SAAS) ---
+      async triggerLookup(fieldId, selectedValue) {
+        const s = this.schema[fieldId];
+        if (!s || !selectedValue) return;
+
+        // 1. Identifikasi Tabel Sumber (Tabel Kopi)
+        const tableSource = s.lookup ? s.lookup.table : (s.autoTable || '');
+        const keyField = s.lookup ? s.lookup.field : fieldId;
+        let sourceData = this.resourceCache[tableSource];
+
+        if (sourceData) {
+          // 2. Cari baris kopi yang dipilih
+          const row = sourceData.find(r => String(r[keyField]) === String(selectedValue));
+
+          if (row) {
+            // 3. Loop semua kolom di form Penjualan
+            for (let key in this.schema) {
+              const cfg = this.schema[key];
+
+              // 4. CEK: Apakah kolom ini adalah AUTOFILL yang dipicu oleh fieldId ini?
+              if (cfg.autoTrigger === fieldId || (cfg.type === 'AUTOFILL' && cfg.autoTrigger === fieldId)) {
+
+                // AMBIL NILAI: Gunakan mapping autoCol (misal: 'id') atau default ke 'key'
+                const sourceKey = cfg.autoCol || key;
+                const valueToFill = row[sourceKey];
+
+                if (valueToFill !== undefined) {
+                  console.log(`[Autofill Success] Mengisi ${key} dengan ${valueToFill}`);
+                  this.updateFieldValue(key, valueToFill);
+                }
+              }
+            }
+          }
+        }
+        this.runLiveFormula();
+      },
+
+      addDashboardWidgetConfig: function () {
+        this.dashboardConfigs.push({
+          name: 'Widget Baru',
+          table: '',
+          type: 'COUNT',
+          column: ''
+        });
+        this.renderDashboardBuilder();
+      },
+
+async init() {
+  if (!this.token) return;
+
+  /* ======================================================
+   * 1. SET IDENTITAS UI
+   * ====================================================== */
+  document.getElementById('login-screen')?.classList.add('hidden');
+  document.getElementById('u-email').innerText = this.email;
+  document.getElementById('u-role').innerText = this.role;
+  document.getElementById('u-avatar').innerText =
+    this.email.charAt(0).toUpperCase();
+
+  const sysTools = document.getElementById('system-tools');
+  if (this.role === 'admin' && sysTools) {
+    sysTools.classList.remove('hidden');
+  }
+
+  const titleEl = document.getElementById('cur-title');
+  if (titleEl) titleEl.innerText = 'INITIALIZING SYSTEM...';
+
+  /* ======================================================
+   * 2. LOAD RESOURCE LIST, CONFIG, & PERMISSION MATRIX
+   * ====================================================== */
+  const [resList, _, permRes] = await Promise.all([
+    this.get({ action: 'listResources' }),
+    this.loadDashboardConfigs(),
+    this.get({ action: 'read', table: 'config_permissions' })
+  ]);
+
+  // Permission Matrix (Kitab Suci)
+  if (permRes?.success) {
+    this.permMatrix = permRes.rows.filter(
+      r => r.resource && !String(r.resource).includes('{')
+    );
+  }
+
+  if (!resList?.success) return;
+
+  this.allResources = resList.resources;
+
+  /* ======================================================
+   * 3. PREFETCH SEMUA DATA + SATUKAN KE fullAppData
+   * ====================================================== */
+  this.resourceCache = {};
+  this.schemaCache = {};
+  this.fullAppData = {}; // 🔑 INI YANG HILANG SEBELUMNYA
+
+  await Promise.all(
+    resList.resources.map(async (res) => {
+      const detail = await this.get({
+        action: 'read',
+        table: res.id
+      });
+
+      if (!detail?.success) return;
+
+      // Cache lama (tetap dipakai modul lain)
+      this.resourceCache[res.id] = detail.rows || [];
+      this.schemaCache[res.id] = {
+        schema: detail.schema || {},
+        modes: detail.modes || { add: { can: false } }
+      };
+
+      // 🔥 CACHE TERPADU (dipakai schema + search)
+      this.fullAppData[res.id] = {
+        schema: detail.schema || {},
+        rows: detail.rows || [],
+        modes: detail.modes || { add: { can: false } }
+      };
+    })
+  );
+
+  /* ======================================================
+   * 4. FINALISASI UI
+   * ====================================================== */
+  this.renderSidebar();
+
+  if (titleEl) titleEl.innerText = 'SYSTEM READY';
+
+  this.openDashboard();
+  
+}
+,
+
+async post(arg1, arg2) {
+        try {
+          let finalPayload;
+
+          // JIKA DIPANGGIL: this.post({ action: '...', table: '...' }) -> (Dashboard)
+          if (typeof arg1 === 'object' && !arg2) {
+            finalPayload = { ...arg1, token: this.token };
+          }
+          // JIKA DIPANGGIL: this.post('create', data) -> (CRUD Biasa & Otomasi)
+          else {
+            finalPayload = {
+              action: arg1,
+              table: this.currentTable,
+              data: arg2,
+              token: this.token
+            };
+          }
+
+          const res = await fetch(BASE_URL, {
+            method: 'POST',
+            body: JSON.stringify(finalPayload)
+          });
+          return await res.json();
+        } catch (e) {
+          return { success: false, message: "Koneksi Terputus" };
+        }
+      },
+
+      async saveDashboardConfig() {
+        try {
+          // 1. Ambil data dari tabel
+          const resRead = await this.get({ action: 'read', table: 'config_dashboard' });
+
+          // 2. Cari baris MANA SAJA yang penting ada (karena isinya pasti cuma config dashboard)
+          const existingRow = resRead.success && resRead.rows.length > 0 ? resRead.rows[0] : null;
+
+          // 3. Jika ada baris (apapun ID-nya), kita UPDATE. Jika kosong, kita CREATE.
+          const actionToDo = existingRow ? 'update' : 'create';
+
+          // 4. Jika update, gunakan ID asli yang dari BE (si SK-XXXX itu)
+          const targetId = existingRow ? existingRow.id : 'USER_DASHBOARD_1';
+
+          const payload = {
+            action: actionToDo,
+            table: 'config_dashboard',
+            data: {
+              id: targetId,
+              config_json: JSON.stringify(this.dashboardConfigs),
+              updated_at: new Date().toISOString()
+            }
+          };
+
+          console.log(`📡 Menembak ID: ${targetId} dengan Action: ${actionToDo}`);
+          const res = await this.post(payload);
+
+          if (res.success) {
+            alert("✅ Berhasil! Sekarang datanya tidak akan duplikat lagi.");
+          }
+        } catch (e) { console.error(e); }
+      },
+
+      deleteWidgetConfig(index) {
+        this.dashboardConfigs.splice(index, 1);
+        this.renderDashboardBuilder();
+      },
+      // Fungsi khusus untuk update tabel agar skema kolomnya ikut ter-fetch
+      async loadDashboardConfigs() {
+        const res = await this.get({ action: 'read', table: 'config_dashboard' });
+        if (res.success && res.rows.length > 0) {
+          this.dashboardConfigs = JSON.parse(res.rows[0].config_json);
+        } else {
+          // Penjelasan: Jika baris BE berkurang/nol, kita reset local state
+          this.dashboardConfigs = [];
+        }
+      },
+
+async loadResource(forceRefresh = false) {
+    const btnRefresh = document.getElementById('btn-refresh');
+    const viewModeEl = document.getElementById('view-mode');
+    
+    // 1. UI FEEDBACK (Start Loading)
+    if (btnRefresh) btnRefresh.classList.add('animate-spin');
+    
+    // Opsional: Clear cache jika dipaksa refresh
+    if (forceRefresh) {
+        this.resourceCache[this.currentTable] = [];
+    }
+
+    // 2. FETCH DATA DARI APPS SCRIPT
+    const d = await this.get({
+        action: 'read',
+        table: this.currentTable,
+        viewMode: viewModeEl?.value || 'active',
+        _t: forceRefresh ? Date.now() : null
+    });
+
+    // 3. UI FEEDBACK (Stop Loading)
+    if (btnRefresh) btnRefresh.classList.remove('animate-spin');
+
+    // 4. SECURITY CHECK (Auth Expired)
+    if (d?.auth === false || d?.message?.toLowerCase().includes('expired')) {
+        return this.logout();
+    }
+
+    // 5. DATA & PERMISSION PROCESSING
+    if (d && d.success) {
+        // UPDATE STATE (Source of Truth)
+        this.schema = d.schema || {};
+        this.modes  = d.modes  || { browse: { can: false }, add: { can: false } };
+
+        const rows = d.rows || [];
+        
+        // UPDATE CACHE
+        this.resourceCache[this.currentTable] = rows;
+        this.schemaCache[this.currentTable] = { 
+            schema: this.schema, 
+            modes: this.modes 
+        };
+
+        // ===============================
+        // 🔥 TAMBAHAN PENTING (SEARCH)
+        // ===============================
+        // rowsRaw  = data asli (source of truth search)
+        // rowsView = data yg sedang ditampilkan
+        this.rowsRaw  = rows;
+        this.rowsView = [...rows];
+        // ===============================
+
+        // --- TITIK KEBENARAN UI ---
+        // Panggil satpam pusat untuk atur tombol Create New
+        this.applyPermissions(); 
+        
+        // Jalankan render table (di dalamnya ada satpam Edit/Delete)
+        this.renderTable(this.rowsView);
+
+        // Sync Dashboard jika sedang terbuka
+        const dashView = document.getElementById('view-dashboard');
+        if (dashView && !dashView.classList.contains('hidden')) {
+            this.renderDashboard();
+        }
+
+    } else {
+        // Jika gagal atau data tidak ditemukan
+        console.warn(`[LoadResource] Failed or empty for ${this.currentTable}`);
+        
+        // Tetap harus panggil applyPermissions agar tombol sembunyi jika gagal load
+        this.modes = { add: { can: false } }; 
+        this.applyPermissions();
+
+        // ===============================
+        // 🔥 RESET SEARCH STATE
+        // ===============================
+        this.rowsRaw  = [];
+        this.rowsView = [];
+        // ===============================
+
+        this.renderTable([]);
+    }
+},
+
+openDashboard: async function () {
+        this.resetViews();
+        const titleEl = document.getElementById('cur-title');
+        if (titleEl) titleEl.innerText = "LOADING DATA...";
+
+        document.getElementById('view-dashboard')?.classList.remove('hidden');
+
+        try {
+          for (const conf of this.dashboardConfigs) {
+            if (conf.table && (!this.resourceCache[conf.table] || this.resourceCache[conf.table].length === 0)) {
+              console.log(`📡 Menarik data otomatis untuk: ${conf.table}`);
+
+              // SINKRONISASI: Set currentTable dulu sebelum panggil loadResource
+              this.currentTable = conf.table;
+              await this.loadResource(true); // Paksa tarik data terbaru
+            }
+          }
+
+          if (titleEl) titleEl.innerText = "DASHBOARD ANALYTICS";
+
+          this.calculateAllWidgets();
+          this.renderDashboard();
+
+        } catch (err) {
+          console.error("Gagal memuat dashboard:", err);
+        }
+      },
+
+      calculateAllWidgets: function () {
+        if (!this.dashboardConfigs) return;
+
+
+        //   // GUNAKAN resourceCache (sesuai properti di app juragan)
+        this.widgetResults = this.dashboardConfigs.map(conf => {
+          const data = this.resourceCache[conf.table] || [];
+
+          if (conf.type === 'COUNT') {
+            return data.length;
+          }
+
+          if (conf.type === 'SUM') {
+            return data.reduce((acc, row) => {
+              const val = parseFloat(row[conf.column]) || 0;
+              return acc + val;
+            }, 0);
+          }
+
+          return 0;
+        });
+
+        console.log("📊 Hasil Perhitungan Dashboard:", this.widgetResults);
+      },
+
+      renderDashboard: function () {
+        const container = document.getElementById('dashboard-container');
+        if (!container) return;
+
+        // Color Map dengan Gradient yang lebih "Deep" dan Glow Effects
+        const colorMap = {
+          slate: { bg: 'bg-slate-900', glow: 'shadow-slate-500/20', grad: 'from-slate-800 to-slate-950', txt: 'text-slate-100', icon: 'bg-slate-700 text-slate-300' },
+          blue: { bg: 'bg-blue-600', glow: 'shadow-blue-500/40', grad: 'from-blue-500 to-blue-700', txt: 'text-white', icon: 'bg-blue-400/30 text-blue-100' },
+          emerald: { bg: 'bg-emerald-600', glow: 'shadow-emerald-500/40', grad: 'from-emerald-500 to-emerald-700', txt: 'text-white', icon: 'bg-emerald-400/30 text-emerald-100' },
+          rose: { bg: 'bg-rose-600', glow: 'shadow-rose-500/40', grad: 'from-rose-500 to-rose-700', txt: 'text-white', icon: 'bg-rose-400/30 text-rose-100' },
+          amber: { bg: 'bg-amber-500', glow: 'shadow-amber-500/40', grad: 'from-amber-400 to-amber-600', txt: 'text-white', icon: 'bg-amber-300/30 text-amber-100' },
+          violet: { bg: 'bg-violet-600', glow: 'shadow-violet-500/40', grad: 'from-violet-500 to-violet-700', txt: 'text-white', icon: 'bg-violet-400/30 text-violet-100' },
+          cyan: { bg: 'bg-cyan-500', glow: 'shadow-cyan-500/40', grad: 'from-cyan-400 to-cyan-600', txt: 'text-white', icon: 'bg-cyan-300/30 text-cyan-100' },
+          fuchsia: { bg: 'bg-fuchsia-600', glow: 'shadow-fuchsia-500/40', grad: 'from-fuchsia-500 to-fuchsia-700', txt: 'text-white', icon: 'bg-fuchsia-400/30 text-fuchsia-100' }
+        };
+
+        if (!this.dashboardConfigs || this.dashboardConfigs.length === 0) {
+          container.innerHTML = `
+            <div class="col-span-full p-20 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
+              <i class="fa-solid fa-shapes text-4xl text-slate-200 mb-4"></i>
+              <p class="text-slate-400 font-black uppercase tracking-widest text-[10px]">Belum ada widget di rakit, juragan.</p>
+            </div>`;
+          return;
+        }
+
+        container.innerHTML = this.dashboardConfigs.map((conf, index) => {
+          const theme = colorMap[conf.color] || colorMap.slate;
+          const rawValue = (this.widgetResults && this.widgetResults[index] !== undefined) ? this.widgetResults[index] : 0;
+
+          // Formatting angka
+          const displayValue = typeof rawValue === 'number' ? rawValue.toLocaleString('id-ID') : rawValue;
+
+          return `
+            <div class="relative group animate-fade-in">
+              <div class="absolute inset-0 ${theme.bg} rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40 transition-all duration-700"></div>
+              
+              <div class="relative bg-gradient-to-br ${theme.grad} p-7 rounded-[2.5rem] ${theme.glow} shadow-2xl border border-white/10 overflow-hidden min-h-[220px] flex flex-col justify-between">
+                
+                <div class="absolute top-0 right-0 -mr-4 -mt-4 w-32 h-32 bg-white/10 rounded-full blur-3xl"></div>
+                <div class="absolute bottom-0 left-0 -ml-4 -mb-4 w-24 h-24 bg-black/10 rounded-full blur-2xl"></div>
+
+                <div class="flex justify-between items-start relative z-10">
+                  <div class="${theme.icon} w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10 group-hover:scale-110 transition-transform duration-500">
+                    <i class="fa-solid ${conf.icon || 'fa-wallet'} text-xl"></i>
+                  </div>
+                  <div class="bg-black/10 px-3 py-1 rounded-full backdrop-blur-sm border border-white/5">
+                    <span class="text-[9px] font-black tracking-widest ${theme.txt} opacity-80 uppercase">${conf.unit || 'VAL'}</span>
+                  </div>
+                </div>
+
+                <div class="mt-6 relative z-10">
+                  <h3 class="text-[10px] font-black tracking-[0.2em] mb-1 ${theme.txt} opacity-60 uppercase">
+                    ${conf.name || 'Untitled Widget'}
+                  </h3>
+                  <div class="flex items-baseline gap-1">
+                    <span class="text-4xl font-black tracking-tighter ${theme.txt} drop-shadow-md">
+                      ${displayValue}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="mt-4 flex items-center justify-between relative z-10">
+                  <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-white/40 animate-pulse"></div>
+                    <span class="text-[8px] font-bold ${theme.txt} opacity-40 uppercase tracking-[0.15em]">${conf.type} ANALYSIS</span>
+                  </div>
+                  <i class="fa-solid fa-arrow-up-right-dots text-[10px] ${theme.txt} opacity-20 group-hover:opacity-100 transition-opacity"></i>
+                </div>
+
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+applyPermissions() {
+    const btnAdd = document.getElementById('btn-add');
+    if (!btnAdd) return;
+
+    // 🔥 FIX UTAMA
+    const userRole = this.role;
+    const currentTable = this.currentTable;
+
+    if (!userRole || !currentTable) {
+        console.warn('applyPermissions: role atau table belum siap', {
+            userRole,
+            currentTable
+        });
+        btnAdd.classList.add('hidden');
+        btnAdd.style.display = 'none';
+        return;
+    }
+
+    // Cari rule di permission matrix
+    const rule = this.permMatrix?.find(r =>
+        String(r.resource).toLowerCase() === currentTable.toLowerCase() &&
+        String(r.role).toLowerCase() === userRole.toLowerCase()
+    );
+
+    // Default: DENY (zero-trust)
+    let canAdd = false;
+
+    if (rule && rule.can_add !== undefined) {
+        canAdd = String(rule.can_add).toUpperCase() === 'TRUE';
+    }
+
+    // EKSEKUSI UI
+    if (canAdd) {
+        btnAdd.classList.remove('hidden');
+        btnAdd.style.display = 'flex';
+    } else {
+        btnAdd.classList.add('hidden');
+        btnAdd.style.display = 'none';
+    }
+
+    console.log('[PERMISSION]', {
+        table: currentTable,
+        role: userRole,
+        canAdd
+    });
+},
+
+
+async syncPermissions() {
+    // Load diam-diam tanpa merender HTML apa-apa
+    const res = await this.get({ action: 'read', table: 'config_permissions' });
+    if (res.success && res.rows) {
+        // Simpan data murni ke memory
+        this.permMatrix = res.rows.filter(r => r.resource && !String(r.resource).includes('{'));
+        console.log("🛡️ Shield Activated: Permissions Cached");
+    }
+},
+
+can(action) {
+  if (!this.permMatrix || !this.role || !this.currentTable) return false;
+
+  const rule = this.permMatrix.find(r =>
+    String(r.resource).toLowerCase() === this.currentTable.toLowerCase() &&
+    String(r.role).toLowerCase() === this.role.toLowerCase()
+  );
+
+  if (!rule) return false;
+
+  const map = {
+    add: 'can_add',
+    edit: 'can_edit',
+    delete: 'can_delete',
+    browse: 'can_browse'
+  };
+
+  const key = map[action];
+  return key ? String(rule[key]).toUpperCase() === 'TRUE' : false;
+},
+
+// renderSchemaData: async function () {
+//     const container = document.getElementById('schema-content-area');
+//     if (!container) return;
+
+//     // Guard: pastikan data tersedia
+//     if (!this.fullAppData || Object.keys(this.fullAppData).length === 0) {
+//         container.innerHTML = `
+//             <div class="p-10 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
+//                 <p class="font-black text-slate-400 uppercase tracking-widest text-[10px]">
+//                     Belum ada schema
+//                 </p>
+//             </div>`;
+//         return;
+//     }
+
+//     // 🔑 SATU-SATUNYA SUMBER HTML SCHEMA
+//     const html = await window.Schemaexplorer.getTemplate();
+
+//     // Render ke DOM
+//     container.innerHTML = `
+//         <div class="animate-fade-in pb-20">
+//             ${html}
+//         </div>
+//     `;
+// },
+
+renderToStage(htmlContent) {
+    const stage = document.getElementById('scroll-area');
+    if (!stage) return;
+    
+    // Sembunyikan view standar dulu agar tidak tumpang tindih
+    document.getElementById('view-crud').classList.add('hidden');
+    document.getElementById('view-dashboard').classList.add('hidden');
+    
+    // Buat atau cari kontainer khusus konten dinamis agar tidak merusak yang lain
+    let dynamicLayer = document.getElementById('dynamic-layer');
+    if (!dynamicLayer) {
+        dynamicLayer = document.createElement('div');
+        dynamicLayer.id = 'dynamic-layer';
+        stage.appendChild(dynamicLayer);
+    }
+    
+    dynamicLayer.innerHTML = `<div class="animate-fade-in">${htmlContent}</div>`;
+    dynamicLayer.classList.remove('hidden');
+}, 
+showCrudView() {
+    // Sembunyikan layer dinamis jika ada
+    const dynamicLayer = document.getElementById('dynamic-layer');
+    if (dynamicLayer) dynamicLayer.classList.add('hidden');
+    
+    // Tampilkan view-crud asli
+    document.getElementById('view-crud').classList.remove('hidden');
+    document.getElementById('view-dashboard').classList.add('hidden');
+},
+
+renderTable(rows) {
+  this.showCrudView(); // <-- Panggil ini di awal fungsi renderTable
+  const head = document.getElementById('t-head');
+  const body = document.getElementById('t-body');
+  const viewModeEl = document.getElementById('view-mode');
+  const emptyState = document.getElementById('empty-state');
+
+  if (!head || !body || !viewModeEl || !emptyState) return;
+
+  // ================================
+  // 1. MODE & SCHEMA VALIDATION
+  // ================================
+  if (!this.modes?.browse) return;
+
+  const viewMode = viewModeEl.value;
+  const fields = this.modes.browse.fields || [];
+
+  // ================================
+  // 2. PERMISSION (ZERO TRUST)
+  // ================================
+  const canEdit =
+    this.modes.edit?.can === true &&
+    this.can('edit');
+
+  const canDelete =
+    this.modes.delete?.can === true &&
+    this.can('delete') &&
+    viewMode === 'active';
+
+  const showActionColumn = canEdit || canDelete;
+
+  // ================================
+  // 3. EMPTY STATE
+  // ================================
+  if (!Array.isArray(rows) || rows.length === 0) {
+    body.innerHTML = '';
+    emptyState.classList.remove('hidden');
+    return;
+  }
+
+  emptyState.classList.add('hidden');
+
+  // ================================
+  // 4. TABLE HEADER
+  // ================================
+  head.innerHTML = `
+    <tr class="bg-slate-50 border-b border-slate-200">
+      ${fields.map(f => `
+        <th class="p-6 text-left text-[10px] font-black uppercase text-slate-400 tracking-widest">
+          ${this.schema?.[f]?.label || f}
+        </th>
+      `).join('')}
+      ${showActionColumn ? `<th class="p-6 text-right text-[10px] font-black uppercase text-slate-400 tracking-widest">Actions</th>` : ''}
+    </tr>
+  `;
+
+  // ================================
+  // 5. TABLE BODY
+  // ================================
+  body.innerHTML = rows.map(row => {
+    // PROTEKSI DATA HANTU
+    if (!row?.id) return '';
+
+    // ----------------
+    // DATA CELLS
+    // ----------------
+    const cells = fields.map(f => {
+      let val = row[f] ?? '-';
+      const s = this.schema?.[f];
+
+      if (s?.type === 'currency' && !isNaN(val)) {
+        val = new Intl.NumberFormat('id-ID', {
+          style: 'currency',
+          currency: 'IDR',
+          minimumFractionDigits: 0
+        }).format(val);
+      }
+
+      return `
+        <td class="p-6 font-medium text-slate-600 text-xs">
+          ${val}
+        </td>
+      `;
+    }).join('');
+
+    // ----------------
+    // ACTION BUTTONS
+    // ----------------
+    const btnEdit = canEdit
+      ? `<button
+          onclick='app.openForm(${JSON.stringify(row).replace(/'/g, "&apos;")})'
+          class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase
+                 hover:bg-blue-600 hover:text-white transition-all">
+          <i class="fa-solid fa-pen"></i> Edit
+        </button>`
+      : '';
+
+    const btnDelete = canDelete
+      ? `<button
+          onclick="app.remove('${row.id}')"
+          class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase
+                 hover:bg-red-600 hover:text-white transition-all">
+          <i class="fa-solid fa-trash"></i> Delete
+        </button>`
+      : '';
+
+    const actionCell = showActionColumn
+      ? `<td class="p-6 text-right space-x-1">${btnEdit}${btnDelete}</td>`
+      : '';
+
+    return `
+      <tr class="hover:bg-blue-50/40 border-b border-slate-100 transition-colors">
+        ${cells}
+        ${actionCell}
+      </tr>
+    `;
+  }).join('');
+}
+,
+    clearStage() {
+
+  const layer = document.getElementById('schema-layer');
+
+  if (!layer) return;
+
+
+
+  layer.innerHTML = '';
+
+  layer.classList.add('hidden');
+
+},
+
+
+
+    };
+    app.init();
+  </script>
+
+
+</body>
+
+</html>
