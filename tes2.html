@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STARKIT VOYAGER - JURAGAN MODE</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .sidebar-active { background: #1e293b; color: #f8fafc; border-left: 4px solid #3b82f6; }
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 768px) { .sidebar-closed { transform: translateX(-100%); } .sidebar-open { transform: translateX(0); } }
+    .table-container { position: relative; max-height: calc(100vh - 180px); overflow-y: auto; border-radius: 2rem; }
+    #t-head th { position: sticky; top: 0; z-index: 20; background: #f8fafc; box-shadow: inset 0 -1px 0 #e2e8f0; }
+  </style>
+</head>
+
+<body class="bg-[#f8fafc] text-slate-800 font-sans antialiased overflow-hidden">
+  <div id="app-root" class="flex h-screen relative">
+
+    <div id="login-screen" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-[100]">
+      <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center animate-fade-in mx-4">
+        <div class="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/40">
+          <i class="fa-solid fa-shuttle-space text-white text-2xl"></i>
+        </div>
+        <h1 class="text-3xl font-black text-slate-900 tracking-tight">STARKIT</h1>
+        <p class="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1 mb-8">Juragan SaaS Engine</p>
+        <div class="space-y-4">
+          <input id="login-email" type="email" placeholder="Email Juragan" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm">
+          <input id="login-pass" type="password" placeholder="Password" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm">
+          <button id="btn-login" onclick="app.login()" class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all uppercase tracking-widest text-xs">
+            Authorize Access
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <aside id="main-sidebar" class="w-72 bg-[#0f172a] text-slate-400 flex flex-col h-full shadow-2xl z-[60] fixed md:relative transition-transform duration-300 sidebar-closed md:sidebar-open">
+      <div class="p-8 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white"><i class="fa-solid fa-bolt"></i></div>
+          <span class="text-white font-black text-xl tracking-tighter uppercase text-white">Starkit</span>
+        </div>
+        <button onclick="app.toggleSidebar()" class="md:hidden text-white"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <nav class="flex-1 px-4 space-y-6 overflow-y-auto">
+        <button id="nav-dashboard" onclick="app.openDashboard()" class="nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all hover:bg-white/5">
+          <i class="fa-solid fa-house text-sm"></i>
+          <span class="font-black text-[11px] uppercase tracking-widest">Dashboard</span>
+        </button>
+        <div class="space-y-2">
+          <p class="text-[10px] font-black uppercase tracking-[0.2em] px-4 opacity-40 text-white">Databases</p>
+          <div id="resource-list" class="space-y-1"></div>
+        </div>
+      </nav>
+
+      <div class="p-6 bg-[#1e293b]/50 m-4 rounded-3xl border border-white/5">
+        <div class="flex items-center gap-3 mb-4">
+          <div id="u-avatar" class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xs shadow-lg shadow-blue-500/20">?</div>
+          <div class="overflow-hidden">
+            <p id="u-email" class="text-[10px] font-bold text-white truncate"></p>
+            <p id="u-role" class="text-[9px] uppercase font-black text-blue-400 tracking-widest"></p>
+          </div>
+        </div>
+        <button onclick="app.logout()" class="w-full py-2.5 text-[10px] font-black text-red-400 hover:bg-red-500/10 rounded-xl uppercase tracking-widest transition-all border border-red-500/20">Logout System</button>
+      </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col min-w-0 bg-[#f8fafc] w-full">
+      <header class="h-20 bg-white border-b px-4 md:px-8 flex items-center justify-between z-10 gap-4">
+        <div class="flex items-center gap-4 flex-1 overflow-hidden">
+          <button onclick="app.toggleSidebar()" class="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-xl">
+            <i class="fa-solid fa-bars-staggered"></i>
+          </button>
+          <h2 id="cur-title" class="font-black text-lg md:text-2xl text-slate-800 tracking-tight whitespace-nowrap">Dashboard</h2>
+          
+          <div id="search-container" class="hidden md:flex items-center gap-4 flex-1 max-w-2xl animate-fade-in">
+            <div class="relative flex-1 group">
+              <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input id="global-search" type="text" oninput="app.filterTable(this.value)" placeholder="Search data..." class="w-full bg-slate-100 border-2 border-transparent rounded-2xl py-2 pl-11 pr-4 text-sm font-bold focus:bg-white focus:border-blue-500 outline-none transition-all">
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btn-refresh" onclick="app.loadResource(true)" class="p-3 text-slate-400 hover:text-blue-500 transition-all">
+            <i class="fa-solid fa-sync text-sm"></i>
+          </button>
+          <button id="btn-add" onclick="app.openForm()" class="hidden bg-blue-600 text-white px-4 md:px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest flex items-center gap-2">
+            <i class="fa-solid fa-plus"></i> <span class="hidden md:inline">Create New</span>
+          </button>
+        </div>
+      </header>
+
+      <div id="scroll-area" class="flex-1 overflow-auto p-4 md:p-8">
+        <div id="view-crud" class="hidden animate-fade-in">
+          <div class="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 table-container">
+            <table class="w-full text-left border-separate border-spacing-0">
+              <thead id="t-head"></thead>
+              <tbody id="t-body" class="divide-y divide-slate-100"></tbody>
+            </table>
+            <div id="empty-state" class="hidden p-12 md:p-24 text-center">
+              <i class="fa-solid fa-box-open text-2xl text-slate-200 mb-4 block"></i>
+              <p class="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">No Data Found</p>
+            </div>
+          </div>
+        </div>
+        <div id="view-dashboard" class="hidden animate-fade-in">
+          <div id="dashboard-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="sidebar-overlay" onclick="app.toggleSidebar()" class="fixed inset-0 bg-slate-900/40 z-[55] hidden backdrop-blur-sm transition-opacity"></div>
+
+  <script>
+    const BASE_URL = 'https://script.google.com/macros/s/AKfycbxh1foEg_C7IlblKyZC-o4MtQblzFplUz6_CzZijJtk-cBE91oY-hS0gGJ8eK0wW-smjA/exec';
+
+    window.app = {
+      token: localStorage.getItem('sk_token'),
+      role: localStorage.getItem('sk_role'),
+      email: localStorage.getItem('sk_email'),
+      currentTable: '',
+      resourceCache: {},
+      allResources: [],
+      dashboardConfigs: [],
+
+      async init() {
+        if (!this.token) return;
+        
+        document.getElementById('login-screen')?.classList.add('hidden');
+        document.getElementById('u-email').innerText = this.email || '';
+        document.getElementById('u-role').innerText = this.role || '';
+        document.getElementById('u-avatar').innerText = (this.email || '?').charAt(0).toUpperCase();
+
+        const resList = await this.get({ action: 'listResources' });
+        if (resList?.success) {
+          this.allResources = resList.resources;
+          this.renderSidebar();
+          this.openDashboard();
+        }
+      },
+
+      async login() {
+        const email = document.getElementById('login-email').value;
+        const pass = document.getElementById('login-pass').value;
+        const btn = document.getElementById('btn-login');
+
+        btn.innerText = "AUTHORIZING...";
+        try {
+          const res = await fetch(BASE_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'login', email, password: pass })
+          });
+          const data = await res.json();
+          if (data.success) {
+            localStorage.setItem('sk_token', data.token);
+            localStorage.setItem('sk_role', data.role);
+            localStorage.setItem('sk_email', email);
+            location.reload();
+          } else {
+            alert("Akses Ditolak!");
+            btn.innerText = "Authorize Access";
+          }
+        } catch (e) { alert("Gagal terhubung ke server!"); }
+      },
+
+      logout() { localStorage.clear(); location.reload(); },
+
+      async get(params) {
+        const q = new URLSearchParams({ ...params, token: this.token }).toString();
+        const res = await fetch(`${BASE_URL}?${q}`);
+        return await res.json();
+      },
+
+      toggleSidebar() {
+        const sb = document.getElementById('main-sidebar');
+        const ov = document.getElementById('sidebar-overlay');
+        sb.classList.toggle('sidebar-closed');
+        sb.classList.toggle('sidebar-open');
+        ov.classList.toggle('hidden');
+      },
+
+      renderSidebar() {
+        const list = document.getElementById('resource-list');
+        list.innerHTML = this.allResources.map(r => `
+          <button onclick="app.selectResource('${r.id}')" id="db-${r.id}" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm uppercase text-slate-300 hover:bg-slate-800 transition-all text-left">
+            <i class="fa-solid fa-database text-[11px] opacity-50"></i>
+            <span class="truncate">${r.id}</span>
+          </button>
+        `).join('');
+      },
+
+      async selectResource(id) {
+        this.currentTable = id;
+        document.getElementById('cur-title').innerText = id.toUpperCase();
+        document.getElementById('view-crud').classList.remove('hidden');
+        document.getElementById('view-dashboard').classList.add('hidden');
+        await this.loadResource();
+      },
+
+      async loadResource(force = false) {
+        const res = await this.get({ action: 'read', table: this.currentTable });
+        if (res.success) {
+          this.renderTable(res.rows, res.schema);
+        }
+      },
+
+      renderTable(rows, schema) {
+        const head = document.getElementById('t-head');
+        const body = document.getElementById('t-body');
+        const fields = Object.keys(schema || {});
+
+        head.innerHTML = `<tr>${fields.map(f => `<th class="p-6 text-left text-[10px] font-black uppercase text-slate-400">${schema[f].label || f}</th>`).join('')}</tr>`;
+        body.innerHTML = rows.map(row => `<tr>${fields.map(f => `<td class="p-6 text-xs text-slate-600">${row[f] || '-'}</td>`).join('')}</tr>`).join('');
+      },
+
+      openDashboard() {
+        document.getElementById('view-crud').classList.add('hidden');
+        document.getElementById('view-dashboard').classList.remove('hidden');
+        document.getElementById('cur-title').innerText = "DASHBOARD";
+      }
+    };
+
+    window.addEventListener('load', () => app.init());
+  </script>
+</body>
+</html>

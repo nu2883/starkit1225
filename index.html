@@ -1292,31 +1292,7 @@
         return key ? String(rule[key]).toUpperCase() === 'TRUE' : false;
       },
 
-      // renderSchemaData: async function () {
-      //     const container = document.getElementById('schema-content-area');
-      //     if (!container) return;
 
-      //     // Guard: pastikan data tersedia
-      //     if (!this.fullAppData || Object.keys(this.fullAppData).length === 0) {
-      //         container.innerHTML = `
-      //             <div class="p-10 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
-      //                 <p class="font-black text-slate-400 uppercase tracking-widest text-[10px]">
-      //                     Belum ada schema
-      //                 </p>
-      //             </div>`;
-      //         return;
-      //     }
-
-      //     // 🔑 SATU-SATUNYA SUMBER HTML SCHEMA
-      //     const html = await window.Schemaexplorer.getTemplate();
-
-      //     // Render ke DOM
-      //     container.innerHTML = `
-      //         <div class="animate-fade-in pb-20">
-      //             ${html}
-      //         </div>
-      //     `;
-      // },
 
       renderToStage(htmlContent) {
         const stage = document.getElementById('scroll-area');

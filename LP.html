@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Starkit Voyager | Spreadsheet → Aplikasi Profesional</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+body { font-family: 'Plus Jakarta Sans', sans-serif; background:#f9fafb; color:#1e293b; }
+.text-gradient { background: linear-gradient(135deg,#1e293b 0%,#3b82f6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.feature-card { transition: all 0.3s ease; }
+.feature-card:hover { transform: translateY(-5px); box-shadow:0 15px 35px rgba(59,130,246,0.15);}
+.cta-shadow { box-shadow: 0 20px 40px -10px rgba(59,130,246,0.3);}
+.pulse { animation: pulse 1.5s infinite; }
+@keyframes pulse {0%,100%{opacity:1;}50%{opacity:0.6;}}
+.fade-in {animation: fadeIn 1s ease forwards; opacity:0;}
+@keyframes fadeIn {to {opacity:1;}}
+</style>
+</head>
+<body class="selection:bg-blue-100 selection:text-blue-900">
+
+<!-- Micro-FOMO Bar -->
+<div class="bg-slate-900 text-slate-300 py-2 px-4 text-center text-[10px] font-bold uppercase tracking-[0.2em] flex justify-center items-center gap-4">
+    <span>Lisensi Terbatas •</span>
+    <span id="activeUsers" class="font-extrabold text-blue-400">~35 orang sedang melihat ini</span>
+</div>
+
+<!-- Navbar -->
+<nav class="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
+        <div class="font-extrabold text-xl tracking-tighter italic">STARKIT<span class="text-blue-600">VOYAGER</span></div>
+        <a href="#claim" class="bg-blue-600 text-white px-5 py-2 rounded-lg font-bold text-xs uppercase shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">Aktivasi Sekarang</a>
+    </div>
+</nav>
+
+<!-- Hero Section -->
+<section class="pt-32 pb-20 px-6">
+    <div class="max-w-4xl mx-auto text-center">
+        <h1 class="text-4xl md:text-6xl font-extrabold leading-tight mb-6">
+            Stop Input Manual di <br/>
+            <span class="text-gradient">Google Sheets Berantakan</span>
+        </h1>
+        <p class="text-lg text-slate-500 mb-8 leading-relaxed">
+            Hilangkan kesalahan, data hilang, rumus rusak, dan akses rumit dari HP. <strong>Starkit Voyager</strong> mengubah spreadsheet menjadi aplikasi profesional siap pakai.
+        </p>
+        <div class="flex flex-col md:flex-row justify-center gap-4">
+            <a href="#claim" class="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform cta-shadow pulse">
+                Ubah Sheets Menjadi Aplikasi • Rp 50rb
+            </a>
+        </div>
+        <p class="mt-4 text-[10px] text-slate-400 uppercase tracking-widest">✔ 152 bisnis sudah beralih • ⚡ Aktif <60 detik • 🔒 100% Private</p>
+    </div>
+</section>
+
+<!-- Problem & Solution -->
+<section class="py-20 bg-slate-50 px-6">
+    <div class="max-w-6xl mx-auto">
+        <h2 class="text-3xl font-extrabold text-center mb-16 italic">Masalah & Solusi Starkit Voyager</h2>
+        <div class="grid md:grid-cols-2 gap-12 text-sm md:text-base">
+            <!-- Masalah -->
+            <div class="space-y-6">
+                <div class="flex gap-4 p-6 bg-red-50 rounded-2xl border border-red-100">
+                    <i class="fa-solid fa-circle-xmark text-red-600 text-xl"></i>
+                    <p class="font-bold text-red-800 italic">"Admin sering salah hapus rumus/kolom di Google Sheets."</p>
+                </div>
+                <div class="flex gap-4 p-6 bg-red-50 rounded-2xl border border-red-100">
+                    <i class="fa-solid fa-circle-xmark text-red-600 text-xl"></i>
+                    <p class="font-bold text-red-800 italic">"Input data dari HP sangat menyiksa karena kolom kecil."</p>
+                </div>
+                <div class="flex gap-4 p-6 bg-red-50 rounded-2xl border border-red-100">
+                    <i class="fa-solid fa-circle-xmark text-red-600 text-xl"></i>
+                    <p class="font-bold text-red-800 italic">"Karyawan bisa lihat data rahasia (Omzet/Profit)."</p>
+                </div>
+            </div>
+            <!-- Solusi -->
+            <div class="space-y-6">
+                <div class="flex gap-4 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-xl"></i>
+                    <p class="font-bold text-emerald-800 italic">"Sistem Mengunci Data. User hanya bisa input via Form."</p>
+                </div>
+                <div class="flex gap-4 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-xl"></i>
+                    <p class="font-bold text-emerald-800 italic">"Mobile-Friendly. Input data cepat seperti chat WA."</p>
+                </div>
+                <div class="flex gap-4 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-xl"></i>
+                    <p class="font-bold text-emerald-800 italic">"Role Access. Admin lihat Dashboard, User hanya Input."</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="py-24 px-6">
+    <div class="max-w-6xl mx-auto">
+        <h2 class="text-3xl font-extrabold mb-12 italic border-l-8 border-blue-600 pl-6 uppercase">3 Pilar Starkit Voyager</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="p-8 border border-slate-100 rounded-3xl feature-card">
+                <h4 class="font-black text-xl mb-4">1. Smart Engine CRUD</h4>
+                <p class="text-slate-500 text-sm leading-relaxed mb-4">Input, Edit, Hapus data langsung dari aplikasi. Data masuk ke Sheets secara rapi.</p>
+                <span class="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded">REAL-TIME TECHNOLOGY</span>
+            </div>
+            <div class="p-8 border border-slate-100 rounded-3xl feature-card">
+                <h4 class="font-black text-xl mb-4">2. Auto-Dashboard</h4>
+                <p class="text-slate-500 text-sm leading-relaxed mb-4">Visualisasi otomatis: grafik & angka langsung muncul, tanpa hitung manual.</p>
+                <span class="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded">VISUAL ANALYTICS</span>
+            </div>
+            <div class="p-8 border border-slate-100 rounded-3xl feature-card">
+                <h4 class="font-black text-xl mb-4">3. Localized Security</h4>
+                <p class="text-slate-500 text-sm leading-relaxed mb-4">Data tetap di Google Sheets Anda sendiri. Aman & Privat.</p>
+                <span class="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded">100% DATA PRIVACY</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA + Form + QRIS -->
+<section id="claim" class="py-24 bg-slate-900 text-white px-6">
+    <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+        <div>
+            <h2 class="text-5xl font-black mb-6 italic tracking-tighter uppercase leading-none text-blue-400">Pilihan Cerdas Pemilik Bisnis</h2>
+            <p class="text-slate-400 text-lg mb-8">Berhenti membuang 2–3 jam setiap malam untuk rekap. Starkit Voyager otomatisasi semuanya.</p>
+            <div class="p-6 bg-white/5 rounded-3xl border border-white/10">
+                <p class="text-2xl font-black mb-2">Hanya Rp 50.000</p>
+                <p class="text-sm text-slate-400 italic">One-Time Payment • Tanpa biaya tersembunyi</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl text-slate-900">
+            <h3 class="text-xl font-black mb-6 uppercase tracking-widest text-center">Hubungkan Spreadsheet</h3>
+            <form id="activationForm" class="space-y-6">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Email Admin Utama</label>
+                    <input type="email" id="email" placeholder="contoh@gmail.com" required
+                        class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-600 font-bold text-sm">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Link Google Sheets</label>
+                    <input type="text" id="sheet" placeholder="https://docs.google.com/..." required
+                        class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-600 font-bold text-sm">
+                </div>
+                <button type="submit" id="btn-submit" class="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-sm uppercase tracking-[0.2em] shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rocket"></i> Aktifkan Mesin Bisnis
+                </button>
+            </form>
+
+            <div id="qrisSection" class="hidden mt-8 text-center border-t pt-8 fade-in">
+                <p class="text-xs font-bold mb-4 text-slate-400 uppercase tracking-widest">Selesaikan Pembayaran via QRIS:</p>
+                <img id="qrisImg" src="https://media.perkakasku.com/image/qrperkakasku.jpeg" alt="QRIS" class="w-48 mx-auto rounded-xl shadow-lg mb-4">
+                <div class="flex justify-center gap-4 mt-2">
+                    <a id="downloadQR" href="https://media.perkakasku.com/image/qrperkakasku.jpeg" download="Starkit-Voyager-QRIS.png" class="text-blue-600 font-black text-xs uppercase tracking-widest hover:underline">Download QR</a>
+                </div>
+                <p class="text-[10px] font-black text-blue-600 italic uppercase tracking-widest animate-pulse mt-4">Menunggu Sinyal Pembayaran...</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer class="py-12 bg-white text-center border-t border-slate-50">
+    <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">
+        © 2026 STARKIT VOYAGER | JURAGAN SAAS SHEET | STARKIT ENGINE V2
+    </p>
+</footer>
+
+<script>
+const form = document.getElementById('activationForm');
+const btn = document.getElementById('btn-submit');
+const qris = document.getElementById('qrisSection');
+const activeUsers = document.getElementById('activeUsers');
+
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzxyqu9WRYexe3L5Cq0m_akDlw6J7ZSrINpQk7XgHDN1HSyATtJCs_IQQreJSPj0TW8/exec';
+
+// ==============================
+// Micro-FOMO
+// ==============================
+let users = 35;
+setInterval(() => {
+  users = Math.max(10, Math.floor(Math.random() * 50));
+  activeUsers.textContent = `~${users} orang sedang melihat ini`;
+}, 4500);
+
+// ==============================
+// RESULT BOX (inject)
+// ==============================
+const resultBox = document.createElement('div');
+resultBox.className =
+  'hidden mt-6 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 fade-in text-sm';
+resultBox.innerHTML = `
+  <p class="font-black text-emerald-700 uppercase text-xs mb-2">
+    Aktivasi Berhasil
+  </p>
+  <p><b>Serial Number:</b> <span id="res-serial"></span></p>
+  <p><b>Password:</b> <span id="res-pass"></span></p>
+  <p class="text-[10px] mt-3 text-emerald-600 italic">
+    Simpan data ini. Akses penuh aktif setelah pembayaran.
+  </p>
+`;
+form.after(resultBox);
+
+// ==============================
+// SUBMIT HANDLER (FINAL)
+// ==============================
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+
+  btn.disabled = true;
+  btn.innerHTML =
+    `<i class="fa-solid fa-circle-notch animate-spin mr-2"></i> Sinkronisasi Data...`;
+
+  const email = document.getElementById('email').value.trim();
+  const sheet = document.getElementById('sheet').value.trim();
+
+  const body = new URLSearchParams({
+    action: 'claim',
+    email: email,
+    spreadsheet: sheet
+  });
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body
+    });
+
+    const data = await res.json();
+
+    if (!data.success) throw data;
+
+    // tampilkan hasil
+    document.getElementById('res-serial').textContent = data.serial;
+    document.getElementById('res-pass').textContent = data.password || 'starkitoye';
+    resultBox.classList.remove('hidden');
+
+    // tombol sukses
+    btn.innerHTML =
+      `<i class="fa-solid fa-check-circle mr-2"></i> Mesin Aktif`;
+    btn.classList.replace('bg-blue-600', 'bg-emerald-600');
+
+    // QRIS muncul
+    qris.classList.remove('hidden');
+    qris.scrollIntoView({ behavior: 'smooth' });
+
+  } catch (err) {
+    alert('Gagal menghubungkan data. Coba lagi.');
+    btn.disabled = false;
+    btn.innerHTML =
+      `<i class="fa-solid fa-rocket"></i> Aktifkan Mesin Bisnis`;
+  }
+});
+</script>
+
+
+</body>
+</html>

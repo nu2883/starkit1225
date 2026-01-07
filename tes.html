@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>STARKIT VOYAGER</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    .animate-fade-in { animation: fadeIn .3s ease-out }
+    @keyframes fadeIn {
+      from { opacity:0; transform:translateY(10px) }
+      to { opacity:1; transform:none }
+    }
+  </style>
+</head>
+
+<body class="bg-slate-900 text-slate-800 overflow-hidden">
+
+<!-- ===================== -->
+<!-- LOGIN / SERIAL SCREEN -->
+<!-- ===================== -->
+<div id="login-screen" class="fixed inset-0 flex items-center justify-center z-[100] bg-slate-900">
+
+  <div class="bg-white w-full max-w-md p-10 rounded-[2.5rem] shadow-2xl animate-fade-in mx-4">
+
+    <!-- LOGO -->
+    <div class="w-16 h-16 mx-auto mb-4 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl">
+      <i class="fa-solid fa-shuttle-space text-white text-2xl"></i>
+    </div>
+
+    <h1 class="text-3xl font-black text-center">STARKIT</h1>
+    <p class="text-center text-slate-400 text-[10px] font-bold tracking-widest uppercase mb-8">
+      Juragan SaaS Engine
+    </p>
+
+    <!-- ============ -->
+    <!-- SERIAL FORM -->
+    <!-- ============ -->
+    <div id="serial-box" class="space-y-4 hidden">
+      <input id="serial-input" type="text" placeholder="Serial Number"
+        class="w-full p-4 rounded-2xl border bg-slate-50 font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500">
+
+      <button onclick="app.verifySerial()"
+        class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-700">
+        Verifikasi Lisensi
+      </button>
+    </div>
+
+    <!-- ============ -->
+    <!-- LOGIN FORM -->
+    <!-- ============ -->
+    <div id="login-box" class="space-y-4 hidden">
+      <input id="login-email" type="email" placeholder="Email"
+        class="w-full p-4 rounded-2xl border bg-slate-50 font-bold text-sm outline-none">
+
+      <input id="login-pass" type="password" placeholder="Password"
+        class="w-full p-4 rounded-2xl border bg-slate-50 font-bold text-sm outline-none">
+
+      <button onclick="app.login()"
+        class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-black">
+        Authorize Access
+      </button>
+
+      <button onclick="app.resetSerial()"
+        class="w-full text-[10px] text-red-500 font-black uppercase tracking-widest mt-2">
+        Ganti Serial Number
+      </button>
+    </div>
+
+    <p id="login-msg" class="text-center text-xs font-bold text-red-500 mt-4 hidden"></p>
+  </div>
+</div>
+
+<!-- ================= -->
+<!-- APP CONTAINER -->
+<!-- ================= -->
+<div id="app" class="hidden h-screen bg-[#f8fafc]">
+  <!-- 👉 SELURUH UI STARKIT LU TETAP DI SINI -->
+  <!-- sidebar, dashboard, CRUD, dll -->
+</div>
+
+<script>
+const BASE_MASTER_URL = 'https://script.google.com/macros/s/AKfycbzxyqu9WRYexe3L5Cq0m_akDlw6J7ZSrINpQk7XgHDN1HSyATtJCs_IQQreJSPj0TW8/exec';
+const BASE_APP_URL    = 'https://script.google.com/macros/s/AKfycbzYycnldXTaimSg8NZ5dbCk-Xn4sqtQXho1Hq0S0Au-KuoFhsEBiXsWqTeTryOBhRsU/exec';
+
+window.app = {
+  init() {
+    const serial = localStorage.getItem('sk_serial');
+    serial ? this.showLogin() : this.showSerial();
+  },
+
+  showSerial() {
+    serialBox.classList.remove('hidden');
+    loginBox.classList.add('hidden');
+  },
+
+  showLogin() {
+    loginBox.classList.remove('hidden');
+    serialBox.classList.add('hidden');
+  },
+
+  msg(text) {
+    loginMsg.textContent = text;
+    loginMsg.classList.remove('hidden');
+  },
+
+  async verifySerial() {
+    const serial = serialInput.value.trim();
+    if (!serial) return this.msg('Serial wajib diisi');
+    this.msg('Verifikasi Lisensi...');
+
+    try {
+      const res = await fetch(BASE_MASTER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'verifySerial', serial })
+      });
+
+      const data = await res.json();
+      console.log("📥 Respon Master:", data);
+
+      if (!data.ok || !data.sheet) {
+        console.error("❌ Gagal:", data);
+        return this.msg(data.message || 'Link database tidak ditemukan');
+      }
+
+      // SIMPAN DATA KE STORAGE
+      localStorage.setItem('sk_serial', serial);
+      localStorage.setItem('sk_sheet', data.sheet); 
+      
+      console.log("✅ Berhasil! Link database tersimpan:", data.sheet);
+      this.msg('Lisensi Aktif!');
+      setTimeout(() => this.showLogin(), 800);
+
+    } catch (err) {
+      console.error('🔥 Error Master:', err);
+      this.msg('Gagal koneksi ke Master Server');
+    }
+  },
+
+// --- CORE ENGINE (ANTI ERROR & AUTO SYNC) ---
+// --- CORE ENGINE (ANTI ERROR & AUTO SYNC) ---
+  async login() {
+    const emailEl = document.getElementById('login-email');
+    const passEl = document.getElementById('login-pass');
+    // Mencari tombol secara fleksibel agar tidak error null
+    const btn = document.querySelector('button[onclick*="login"]') || { innerText: "" };
+    const sheet = localStorage.getItem('sk_sheet');
+
+    if (!emailEl || !passEl) return console.error("Input email/pass tidak ketemu!");
+
+    const email = emailEl.value.trim();
+    const pass = passEl.value.trim();
+
+    if (!email || !pass) return alert("Lengkapi data login!");
+    if (!sheet) return alert("Link Spreadsheet tidak ditemukan. Silakan verifikasi serial ulang.");
+
+    // Visual Loading
+    const originalText = btn.innerText;
+    btn.innerText = "AUTHORIZING...";
+
+    try {
+      console.log("🚀 Menghubungi Voyager Engine...");
+
+      // 🔥 TRIK ANTI-CORS: 
+      // 1. JANGAN pakai headers sama sekali.
+      // 2. Kirim body sebagai string JSON biasa.
+      const response = await fetch(BASE_APP_URL, {
+        method: 'POST',
+        mode: 'no-cors', // Kita coba mode no-cors dulu untuk bypass total
+        body: JSON.stringify({
+          action: 'login',
+          email: email,
+          password: pass,
+          sheet: sheet
+        })
+      });
+
+      // CATATAN JURAGAN: Jika pakai 'no-cors', kita tidak bisa baca JSON-nya secara langsung.
+      // Jadi, pola terbaik adalah tetap pakai default tapi TANPA header.
+      
+      const cleanResponse = await fetch(BASE_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'login',
+          email: email,
+          password: pass,
+          sheet: sheet
+        })
+      });
+
+      const res = await cleanResponse.json();
+      console.log("📥 Respon diterima:", res);
+
+      if (res.success) {
+        localStorage.setItem('sk_token', res.token);
+        localStorage.setItem('sk_role', res.role);
+        localStorage.setItem('sk_email', email);
+        alert("Login Berhasil!");
+        location.reload(); 
+      } else {
+        alert("Gagal: " + res.message);
+        btn.innerText = originalText;
+      }
+
+    } catch (e) {
+      console.error("🔥 Login Error:", e);
+      // Jika masih error, besar kemungkinan karena settingan 'Anyone' di GAS belum aktif
+      alert("CORS Error! Pastikan di Google Script: Deploy -> New Deployment -> Who has access: Anyone.");
+      btn.innerText = originalText;
+    }
+  },      
+
+  resetSerial() {
+    if (!confirm('Hapus lisensi?')) return;
+    localStorage.clear();
+    location.reload();
+  }
+};
+
+const serialBox   = document.getElementById('serial-box');
+const loginBox    = document.getElementById('login-box');
+const serialInput = document.getElementById('serial-input');
+const loginEmail  = document.getElementById('login-email');
+const loginPass   = document.getElementById('login-pass');
+const loginMsg    = document.getElementById('login-msg');
+const loginScreen = document.getElementById('login-screen');
+
+window.addEventListener('load', () => app.init());
+</script>
+
+</body>
+</html>
