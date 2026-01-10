@@ -1525,77 +1525,6 @@ async loadResource(forceRefresh = false) {
       }
     }
   },
-// renderTable(rows) {
-//     const head = document.getElementById('t-head');
-//     const body = document.getElementById('t-body');
-//     const emptyState = document.getElementById('empty-state');
-//     const viewMode = document.getElementById('view-mode')?.value || 'active';
-
-//     // 1. DYNAMIC FIELDS FALLBACK
-//     // Jika BE tidak kirim modes.browse, kita ambil key dari data pertama sebagai kolom
-//     let fields = [];
-//     if (this.modes && this.modes.browse && this.modes.browse.fields) {
-//       fields = this.modes.browse.fields;
-//     } else if (rows && rows.length > 0) {
-//       // Ambil semua key kecuali ID dan is_deleted jika schema/modes kosong
-//       fields = Object.keys(rows[0]).filter(k => k !== 'id' && k !== 'is_deleted');
-//       console.warn("Using dynamic fields because modes.browse is missing.");
-//     }
-
-//     // 2. UI LOGIC: Jika data kosong total
-//     if (!rows || rows.length === 0) {
-//       if (body) body.innerHTML = '';
-//       if (emptyState) emptyState.classList.remove('hidden');
-//       return;
-//     }
-    
-//     if (emptyState) emptyState.classList.add('hidden');
-
-//     // 3. RENDER HEADER
-//     if (head) {
-//       head.innerHTML = `<tr>
-//         ${fields.map(f => `
-//           <th class="p-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">
-//             ${this.schema && this.schema[f] ? this.schema[f].label : f.replace(/_/g, ' ')}
-//           </th>`).join('')}
-//         <th class="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-//       </tr>`;
-//     }
-
-//     // 4. RENDER BODY
-//     if (body) {
-//       body.innerHTML = rows.map(row => {
-//         const rowStr = JSON.stringify(row).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-        
-//         return `
-//           <tr class="hover:bg-blue-50/40 border-b border-slate-100 transition-colors">
-//             ${fields.map(f => {
-//               let val = (row[f] === undefined || row[f] === null) ? '-' : row[f];
-//               const s = this.schema ? this.schema[f] : null;
-
-//               if (s?.type === 'currency' && val !== '-') {
-//                 val = new Intl.NumberFormat('id-ID', { 
-//                   style: 'currency', currency: 'IDR', minimumFractionDigits: 0 
-//                 }).format(val);
-//               }
-//               return `<td class="p-6 font-medium text-slate-600 text-sm">${val}</td>`;
-//             }).join('')}
-            
-//             <td class="p-6 text-right space-x-2 whitespace-nowrap">
-//               ${(this.modes?.edit?.can || !this.modes) ? 
-//                 `<button onclick="app.openForm(${rowStr})" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">
-//                   <i class="fa-solid fa-pen"></i>
-//                 </button>` : ''}
-              
-//               ${viewMode === 'active' && (this.modes?.delete?.can || !this.modes) ? 
-//                 `<button onclick="app.remove('${row.id}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">
-//                   <i class="fa-solid fa-trash"></i>
-//                 </button>` : ''}
-//             </td>
-//           </tr>`;
-//       }).join('');
-//     }
-//   },
 
   async save(e) {
     if (e) e.preventDefault();
@@ -1663,84 +1592,86 @@ async loadResource(forceRefresh = false) {
     }
   },
   
-async studioMigrate() {
-  const btn = document.getElementById('btn-migrate');
-  const tableName = document.getElementById('st-table-name').value;
-  const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
-  const fields = [];
+// async studioMigrate() {
+//   const btn = document.getElementById('btn-migrate');
+//   const tableName = document.getElementById('st-table-name').value;
+//   const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
+//   const fields = [];
   
-  if (!tableName) return alert("Nama Tabel Wajib!");
+//   if (!tableName) return alert("Nama Tabel Wajib!");
 
-  fieldNodes.forEach(n => {
-    const colName = n.querySelector('.st-name').value;
-    const type = n.querySelector('.st-type').value;
+//   fieldNodes.forEach(n => {
+//     const colName = n.querySelector('.st-name').value;
+//     const type = n.querySelector('.st-type').value;
 
-    // Ambil nilai relasi (Gaya stabil juragan)
-    // Gunakan querySelector yang langsung ke class agar akurat
-    const rTable = n.querySelector('.st-rel-table')?.value || '';
-    const rField = n.querySelector('.st-rel-field')?.value || '';
+//     // Ambil nilai relasi (Gaya stabil juragan)
+//     // Gunakan querySelector yang langsung ke class agar akurat
+//     const rTable = n.querySelector('.st-rel-table')?.value || '';
+//     const rField = n.querySelector('.st-rel-field')?.value || '';
 
-    fields.push({
-      name: colName,
-      label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
-      type: type,
-      show: n.querySelector('.st-show').checked,
-      required: n.querySelector('.st-req').checked,
-      disabled: n.querySelector('.st-disabled').checked,
-      formula: n.querySelector('.st-formula').value || null,
+//     fields.push({
+//       name: colName,
+//       label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
+//       type: type,
+//       show: n.querySelector('.st-show').checked,
+//       required: n.querySelector('.st-req').checked,
+//       disabled: n.querySelector('.st-disabled').checked,
+//       formula: n.querySelector('.st-formula').value || null,
 
-      // 🚀 FIX LOOKUP: Kita buat objek lookup jika type-nya LOOKUP
-      // Kita kirim string kosong jika input belum diisi, agar tidak langsung null total
-      lookup: (type === 'LOOKUP') ? {
-        table: rTable,
-        field: rField
-      } : null,
+//       // 🚀 FIX LOOKUP: Kita buat objek lookup jika type-nya LOOKUP
+//       // Kita kirim string kosong jika input belum diisi, agar tidak langsung null total
+//       lookup: (type === 'LOOKUP') ? {
+//         table: rTable,
+//         field: rField
+//       } : null,
 
-      // --- INFO 3 SAKTI UNTUK AUTOFILL ---
-      autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value || '' : '',
-      autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value || '' : '',
-      autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value || '' : ''
-    });
-  });
+//       // --- INFO 3 SAKTI UNTUK AUTOFILL ---
+//       autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value || '' : '',
+//       autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value || '' : '',
+//       autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value || '' : ''
+//     });
+//   });
 
-  // Proteksi UI
-  const originalText = btn.innerText;
-  btn.innerText = "MIGRATING...";
-  btn.disabled = true;
+//   // Proteksi UI
+//   const originalText = btn.innerText;
+//   btn.innerText = "MIGRATING...";
+//   btn.disabled = true;
 
-  try {
-    // Gunakan fetch mode no-cors agar stabil tembus ke GAS
-    await fetch(BASE_APP_URL, {
-      method: 'POST',
-      mode: 'no-cors', 
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'migrate',
-        token: this.token || localStorage.getItem('sk_token'),
-        sheet: localStorage.getItem('sk_sheet'),
-        data: { 
-          tableName: tableName, 
-          fields: fields 
-        }
-      })
-    });
+//   try {
+//     // Gunakan fetch mode no-cors agar stabil tembus ke GAS
+//     await fetch(BASE_APP_URL, {
+//       method: 'POST',
+//       mode: 'no-cors', 
+//       headers: { 'Content-Type': 'text/plain' },
+//       body: JSON.stringify({
+//         action: 'migrate',
+//         token: this.token || localStorage.getItem('sk_token'),
+//         sheet: localStorage.getItem('sk_sheet'),
+//         data: { 
+//           tableName: tableName, 
+//           fields: fields 
+//         }
+//       })
+//     });
 
-    // Beri feedback ke user
-    alert("🚀 Instruksi Migrasi Tabel '" + tableName + "' Berhasil Dikirim!");
+//     // Beri feedback ke user
+//     alert("🚀 Instruksi Migrasi Tabel '" + tableName + "' Berhasil Dikirim!");
     
-    setTimeout(() => {
-      location.reload();
-    }, 1000);
+//     setTimeout(() => {
+//       location.reload();
+//     }, 1000);
 
-  } catch (error) {
-    console.error("Migration Error:", error);
-    alert("Terjadi kesalahan jaringan.");
-    btn.innerText = originalText;
-    btn.disabled = false;
-  }
-  },
+//   } catch (error) {
+//     console.error("Migration Error:", error);
+//     alert("Terjadi kesalahan jaringan.");
+//     btn.innerText = originalText;
+//     btn.disabled = false;
+//   }
+//   },
 
     // --- STUDIO SECTION ---
+  
+  
   openAppStudio() {
     this.resetViews();
     this.currentTable = 'APP_STUDIO';

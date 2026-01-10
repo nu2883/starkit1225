@@ -48,7 +48,6 @@ Object.assign(app, {
 
     if (type === 'LOOKUP') {
       relUI.classList.remove('hidden');
-      // 🚀 PERBAIKAN: Pastikan dropdown tabel sumber diisi
       this.syncStudioOptions(id); 
     } else if (type === 'AUTOFILL') {
       const html = `
@@ -156,21 +155,31 @@ Object.assign(app, {
 
   syncAutofillOptions(id) {
     const row = document.getElementById(`st-f-${id}`);
+    if (!row) return;
+
     const triggerSelect = row.querySelector('.st-auto-trigger');
     const tableSelect = row.querySelector('.st-auto-table');
 
-    if (!triggerSelect || !tableSelect) return;
+    if (triggerSelect) {
+      // Simpan nilai lama agar tidak hilang saat sync
+      const currentVal = triggerSelect.value;
+      const currentFields = Array.from(document.querySelectorAll('.st-name'))
+        .map(input => input.value.replace(/\s+/g, '').toLowerCase()) 
+        .filter(v => v !== "");
 
-    const currentFields = Array.from(document.querySelectorAll('.st-name'))
-      .map(input => input.value.replace(/\s+/g, '').toLowerCase()) 
-      .filter(v => v !== "");
+      triggerSelect.innerHTML = '<option value="">-- Pilih Trigger --</option>' +
+        currentFields.map(f => `<option value="${f}">${f.toUpperCase()}</option>`).join('');
+      
+      // Kembalikan nilai jika masih ada di daftar baru
+      triggerSelect.value = currentVal;
+    }
 
-    triggerSelect.innerHTML = '<option value="">-- Pilih Trigger --</option>' +
-      currentFields.map(f => `<option value="${f}">${f.toUpperCase()}</option>`).join('');
-
-    const resources = this.resources || this.allResources || [];
-    tableSelect.innerHTML = '<option value="">-- Pilih Tabel --</option>' +
-      resources.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join('');
+    if (tableSelect && tableSelect.options.length <= 1) { 
+      // Hanya isi jika masih kosong (length 1 adalah baris "-- Pilih Tabel --")
+      const resources = this.resources || this.allResources || [];
+      tableSelect.innerHTML = '<option value="">-- Pilih Tabel --</option>' +
+        resources.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join('');
+    }
   },
 
   async studioMigrate() {
@@ -247,24 +256,26 @@ Object.assign(app, {
     }
   },
 
-  // 🚀 FIX UTAMA DISINI
   syncStudioOptions(id) {
     const resources = this.resources || this.allResources || [];
     
-    // 1. Update dropdown Relasi (LOOKUP) jika ID spesifik diberikan
+    // 1. Update dropdown Relasi (LOOKUP) hanya jika dropdown-nya masih kosong
     if (id) {
       const relSelect = document.querySelector(`#st-f-${id} .st-rel-table`);
-      if (relSelect) {
+      if (relSelect && relSelect.options.length <= 1) {
         relSelect.innerHTML = '<option value="" disabled selected>-- Pilih Tabel --</option>' +
           resources.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join('');
       }
     }
 
-    // 2. Update semua dropdown Trigger Autofill (karena ID Kolom mungkin berubah)
+    // 2. Update daftar Trigger (karena nama kolom bisa berubah)
     const triggers = document.querySelectorAll('.st-auto-trigger');
     triggers.forEach(sel => {
-        const currentId = sel.closest('div[id^="st-f-"]').id.replace('st-f-', '');
-        this.syncAutofillOptions(currentId);
+        const parentRow = sel.closest('div[id^="st-f-"]');
+        if (parentRow) {
+          const currentId = parentRow.id.replace('st-f-', '');
+          this.syncAutofillOptions(currentId);
+        }
     });
   }
 });
