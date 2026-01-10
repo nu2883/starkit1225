@@ -1340,156 +1340,6 @@ const app = {
 
 
 
-async openForm(data = null) {
-    this.editingId = data ? data.id : null;
-    const modal = document.getElementById('f-modal');
-    const container = document.getElementById('f-fields');
-    const title = document.getElementById('modal-title');
-
-    if (!modal || !container) return;
-
-    // 1. UI Setup & Skeleton Loading
-    this.editingId = data ? data.id : null;
-    title.innerText = this.editingId ? `EDIT ${this.currentTable.toUpperCase()}` : `NEW ${this.currentTable.toUpperCase()}`;
-    modal.classList.replace('hidden', 'flex');
-    
-    // Ambil fields berdasarkan permission (ADD/EDIT)
-    const fields = (this.editingId ? this.modes?.edit?.fields : this.modes?.add?.fields) || Object.keys(this.schema);
-    
-    // Render Loading State
-    container.innerHTML = fields.map(() => `
-      <div class="mb-4 animate-pulse">
-        <div class="h-3 w-20 bg-slate-200 rounded mb-2"></div>
-        <div class="h-12 bg-slate-100 rounded-2xl"></div>
-      </div>`).join('');
-
-    // 2. Build Form Berdasarkan Metadata Baris Ke-2
-    let html = '';
-    for (const f of fields) {
-      const s = this.schema[f] || { type: 'TEXT', label: f };
-      if (['id', 'created_at', 'created_by', 'deleted_at'].includes(f) || s.hidden) continue;
-
-      const val = data ? (data[f] || '') : '';
-      
-      // LOGIKA LOCKING: Lock jika disabled di sheet, tipe AUTOFILL, atau FORMULA
-      const isLocked = (String(s.disabled).toLowerCase() === 'true') || 
-                       (s.type === 'AUTOFILL') || 
-                       (s.type === 'FORMULA') ||
-                       (s.formula && String(s.formula) !== "null");
-      
-      const lockClass = isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-dashed opacity-75' : 'bg-slate-50 text-slate-700';
-
-      html += `<div class="mb-4">
-        <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">
-          ${s.label || f} ${s.required ? '<span class="text-red-500">*</span>' : ''}
-          ${isLocked ? '<i class="fa-solid fa-lock ml-1 text-slate-300 text-[8px]"></i>' : ''}
-        </label>`;
-
-      // Render berdasarkan tipe (LOOKUP jadi SELECT, lainnya INPUT)
-      if (s.type === 'LOOKUP' && s.lookup) {
-        html += `<select id="f-${f}" name="${f}" onchange="app.triggerLookup('${f}', this.value)" 
-                  class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">
-                  <option value="">-- PILIH --</option>
-                </select>`;
-      } else {
-        const inputType = (s.type === 'NUMBER' || s.type === 'CURRENCY') ? 'number' : (s.type === 'DATE' ? 'date' : 'text');
-        html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" 
-                  ${isLocked ? 'disabled' : ''} 
-                  oninput="app.runLiveFormula()" 
-                  class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">`;
-      }
-
-      // Hidden input untuk menyimpan data yang ter-lock (agar tidak hilang saat POST)
-      if (isLocked) html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${val}">`;
-      html += `</div>`;
-    }
-    container.innerHTML = html;
-
-    // 3. Populate Data & Triggers (Async)
-    for (const f of fields) {
-      const s = this.schema[f];
-      if (s?.type === 'LOOKUP' && s.lookup) {
-        const currentVal = data ? data[f] : '';
-        await this.populateLookup(f, s.lookup.table, s.lookup.field, currentVal);
-        if (currentVal) await this.triggerLookup(f, currentVal);
-      }
-    }
-    this.runLiveFormula();
-  },
-
-  // --- SUPPORTING ENGINES ---
-
-  async populateLookup(fieldId, table, fieldName, currentVal) {
-    const select = document.getElementById(`f-${fieldId}`);
-    if (!select) return;
-    const list = this.resourceCache[table] || [];
-    select.innerHTML = `<option value="">-- Pilih --</option>` + 
-      list.map(item => `<option value="${item[fieldName]}" ${item[fieldName] == currentVal ? 'selected' : ''}>${item[fieldName]}</option>`).join('');
-  },
-
-  triggerLookup(sourceField, value) {
-    Object.keys(this.schema).forEach(targetField => {
-      const s = this.schema[targetField];
-      if (s.type === 'AUTOFILL' && s.autoTrigger === sourceField) {
-        const tableData = this.resourceCache[s.autoTable] || [];
-        const match = tableData.find(item => String(item[this.schema[sourceField].lookup?.field || sourceField]) === String(value));
-        const el = document.getElementById(`f-${targetField}`);
-        const hiddenEl = document.getElementById(`f-${targetField}-hidden`);
-        if (match && el) {
-          const newVal = match[s.autoCol] || '';
-          el.value = newVal;
-          if (hiddenEl) hiddenEl.value = newVal;
-        }
-      }
-    });
-    this.runLiveFormula();
-  },
-
-  runLiveFormula() {
-    Object.keys(this.schema).forEach(f => {
-      const s = this.schema[f];
-      if (s.type === 'FORMULA' && s.formula) {
-        try {
-          const solved = s.formula.replace(/{(\w+)}/g, (m, key) => {
-            const el = document.getElementById(`f-${key}`) || document.getElementById(`f-${key}-hidden`);
-            return parseFloat(el?.value) || 0;
-          });
-          const result = new Function(`return ${solved}`)();
-          const target = document.getElementById(`f-${f}`);
-          const targetHidden = document.getElementById(`f-${f}-hidden`);
-          if (target) target.value = result;
-          if (targetHidden) targetHidden.value = result;
-        } catch (e) {}
-      }
-    });
-  },
-
-  closeForm() {
-    const modal = document.getElementById('f-modal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    this.editingId = null;
-  },
-
-
-
-  async remove(id) {
-    if (confirm('Hapus Permanent?')) {
-      // Pastikan mengirim sheet ID saat menghapus
-      const res = await this.post('delete', { 
-        table: this.currentTable, 
-        id: id,
-        sheet: this.sheet // <--- PERBAIKAN
-      });
-      if (res.success) {
-        delete this.resourceCache[this.currentTable];
-        this.loadResource(true);
-      } else {
-        alert("Gagal Hapus: " + res.message);
-      }
-    }
-  },
-
 
 
   openDashboard: async function () {
@@ -1812,6 +1662,7 @@ async loadResource(forceRefresh = false) {
       btn.disabled = false;
     }
   },
+  
 async studioMigrate() {
   const btn = document.getElementById('btn-migrate');
   const tableName = document.getElementById('st-table-name').value;
@@ -2051,18 +1902,36 @@ studioAddField() {
     return true;
   },
 
-  async init() {
+async init() {
+    // Pastikan token ada
     if (!this.token) return;
+
+    // Sinkronisasi ulang dari localStorage jika variabel class kosong
+    if (!this.role) {
+      this.role = localStorage.getItem('sk_role') || '';
+    }
 
     // 1. UI Setup Awal
     document.getElementById('login-screen')?.classList.add('hidden');
     document.getElementById('u-email').innerText = this.email || '';
     document.getElementById('u-role').innerText = this.role || '';
     
+    // LOGIC PERBAIKAN: Gunakan .toUpperCase() agar 'admin' atau 'ADMIN' tetap jalan
+    const systemTools = document.getElementById('system-tools');
+    if (systemTools) {
+      if (this.role && this.role.toUpperCase() === 'ADMIN') {
+        systemTools.classList.remove('hidden');
+        console.log("Admin detected, showing Engineering Lab"); // Debug log
+      } else {
+        systemTools.classList.add('hidden');
+        console.log("Role is:", this.role, " - Hiding Engineering Lab"); // Debug log
+      }
+    }
+
     const titleEl = document.getElementById('cur-title');
     if (titleEl) titleEl.innerText = "SYNCHRONIZING...";
 
-    // 2. Ambil List Resource Dulu (Ini biasanya tidak forbidden)
+    // 2. Ambil List Resource Dulu
     const resList = await this.get({ action: 'listResources' });
     if (!resList.success) {
       alert("Koneksi gagal atau Token Expired");
@@ -2070,15 +1939,14 @@ studioAddField() {
     }
     this.allResources = resList.resources;
 
-    // 3. Load Permissions (Sekarang sudah punya listResources untuk fallback)
+    // 3. Load Permissions
     await this.loadPermissions();
 
     this.fullAppData = {};
     this.resourceCache = {};
     this.schemaCache = {};
 
-    // 4. Pre-fetch Data dengan Penanganan Error per Tabel
-    // Jika Staff dilarang baca satu tabel, tabel lain jangan ikut berhenti
+    // 4. Pre-fetch Data per Tabel
     await Promise.all(this.allResources.map(async (res) => {
       try {
         const detail = await this.get({ action: 'read', table: res.id });
@@ -2092,7 +1960,6 @@ studioAddField() {
           };
         } else {
           console.warn(`[INIT] Tabel ${res.id} diblokir backend: ${detail.message}`);
-          // Buat schema kosong agar renderTable tidak pecah (crash)
           this.schemaCache[res.id] = { schema: {}, modes: { add: { can: false } } };
         }
       } catch (e) {
@@ -2105,6 +1972,7 @@ studioAddField() {
     if (titleEl) titleEl.innerText = "SYSTEM READY";
     this.openDashboard();
   }
+
 
 };
 app.init();
