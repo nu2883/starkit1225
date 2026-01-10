@@ -79,59 +79,7 @@ const app = {
 
 
 
-  studioAddField() {
-    const id = Date.now();
-    const html = `
-          <div id="st-f-${id}" class="p-6 bg-slate-50 rounded-[2rem] border border-slate-200 space-y-4 mb-4 animate-fade-in">
-            <div class="flex justify-between items-center">
-              <span class="text-[10px] font-black text-blue-600  tracking-widest">Konfigurasi Kolom</span>
-              <button onclick="this.parentElement.parentElement.remove()" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-circle-xmark"></i></button>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-4">
-              <input type="text" class="st-name w-full p-3 border rounded-xl font-bold text-sm" placeholder="ID Kolom (ex: harga_jual)" oninput="app.syncStudioOptions()">
-              <select class="st-type w-full p-3 border rounded-xl font-bold text-sm" onchange="app.toggleStudioUI('${id}', this.value)">
-                <option value="TEXT">TEXT</option>
-                <option value="NUMBER">NUMBER</option>
-                <option value="CURRENCY">CURRENCY (Rp)</option>
-                <option value="DATE">DATE</option>
-                <option value="LOOKUP">LOOKUP (RELASI)</option>
-                <option value="AUTOFILL">AUTOFILL (OTOMATIS)</option>
-                <option value="FORMULA">FORMULA</option>
-              </select>
-            </div>
 
-            <div id="relasi-ui-${id}" class="hidden p-4 bg-blue-50 rounded-xl grid grid-cols-2 gap-4 border border-blue-100">
-                <div>
-                  <label class="block text-[9px] font-black mb-1 text-blue-400">TABEL SUMBER</label>
-                  <select class="st-rel-table w-full p-2 border rounded-lg text-xs font-bold" onchange="app.populateStudioFields('${id}', this.value)"></select>
-                </div>
-                <div>
-                  <label class="block text-[9px] font-black mb-1 text-blue-400">KOLOM KUNCI (LABEL)</label>
-                  <select class="st-rel-field w-full p-2 border rounded-lg text-xs font-bold"><option value="">-- Pilih Kolom --</option></select>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-[9px] font-black mb-1 text-slate-400">LABEL TAMPILAN</label>
-                <input type="text" class="st-label w-full p-3 border rounded-xl text-sm font-bold" placeholder="Contoh: Harga Satuan">
-              </div>
-              <div>
-                <label class="block text-[9px] font-black mb-1 text-slate-400">FORMULA (OPSIONAL)</label>
-                <input type="text" class="st-formula w-full p-3 border rounded-xl text-sm font-bold" placeholder="Contoh: {qty}*{harga}">
-              </div>
-            </div>
-
-            <div class="flex flex-wrap gap-6 pt-2 border-t border-slate-200">
-              <label class="flex items-center gap-2 text-[9px] font-black  cursor-pointer"><input type="checkbox" class="st-show w-4 h-4" checked> Tampil</label>
-              <label class="flex items-center gap-2 text-[9px] font-black  cursor-pointer"><input type="checkbox" class="st-req w-4 h-4"> Wajib</label>
-              <label class="flex items-center gap-2 text-[9px] font-black  cursor-pointer text-red-500"><input type="checkbox" class="st-disabled w-4 h-4"> Lock (Read-Only)</label>
-            </div>
-          </div>`;
-    document.getElementById('st-fields-container').insertAdjacentHTML('beforeend', html);
-    this.syncStudioOptions(id);
-  },
 
   syncStudioOptions(targetId = null) {
     // 1. Ambil list tabel dan pastikan ID-nya bersih (lowercase, no space)
@@ -303,75 +251,7 @@ const app = {
  * Menggunakan BASE_APP_URL dari auth untuk menghindari hardcode.
  * Sinkron dengan BE v39.2.1 (Juragan SaaS Sheet)
  */
-async studioMigrate() {
-  const btn = document.getElementById('btn-migrate');
-  const tableName = document.getElementById('st-table-name').value;
-  const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
-  const fields = [];
 
-  // 1. AMBIL DATA DARI LOCAL STORAGE & GLOBAL VAR (NO HARDCODE)
-  // BASE_APP_URL diambil dari variabel global yang didefinisikan di auth.js
-  const CLIENT_ENGINE_URL = BASE_APP_URL; 
-  const SK_TOKEN = localStorage.getItem('sk_token');
-  const SK_SHEET = localStorage.getItem('sk_sheet');
-
-  if (!tableName) return alert("Nama Tabel Wajib!");
-  if (!SK_SHEET || !SK_TOKEN) return alert("Sesi atau Database URL tidak ditemukan. Silakan login ulang!");
-
-  // 2. KUMPULKAN DEFINISI KOLOM DARI UI STUDIO
-  fieldNodes.forEach(n => {
-    fields.push({
-      name: n.querySelector('.st-name').value,
-      label: n.querySelector('.st-label').value,
-      type: n.querySelector('.st-type').value,
-      show: n.querySelector('.st-show').checked,
-      required: n.querySelector('.st-req').checked,
-      disabled: n.querySelector('.st-disabled').checked,
-      formula: n.querySelector('.st-formula').value || null
-    });
-  });
-
-  btn.innerText = "MIGRATING...";
-  btn.disabled = true;
-
-  try {
-    // 3. KIRIM DATA KE BE V39.2.1
-    // Menggunakan Content-Type text/plain untuk bypass CORS sesuai standar Simple Request
-    const response = await fetch(CLIENT_ENGINE_URL, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify({
-        action: 'migrate',
-        token: SK_TOKEN,
-        sheet: SK_SHEET, // Key 'sheet' sesuai dengan getDynamicSS(p.sheet) di BE
-        data: {
-          tableName: tableName,
-          fields: fields
-        }
-      })
-    });
-
-    const res = await response.json();
-
-    if (res.success) {
-      alert("🚀 Tabel '" + tableName + "' Berhasil Dilahirkan!");
-      location.reload();
-    } else {
-      alert("Gagal: " + res.message);
-      btn.innerText = "🚀 BIRTH NEW TABLE";
-      btn.disabled = false;
-    }
-
-  } catch (e) {
-    console.error("Migration Error:", e);
-    alert("Koneksi ke Engine Gagal. Pastikan Deployment di Google Script adalah 'Anyone'.");
-    btn.innerText = "🚀 BIRTH NEW TABLE";
-    btn.disabled = false;
-  }
-},
   // =============================
 
   renderSchemaData() {
@@ -539,38 +419,7 @@ async studioMigrate() {
   // Masukkan di dalam const app = { ... }
 
 
-  // --- STUDIO SECTION ---
-  openAppStudio() {
-    this.resetViews();
-    this.currentTable = 'APP_STUDIO';
-    this.currentView = 'studio'; // Update state view
 
-    // 1. HARD RESET UI (Tutup semua pintu view lainnya)
-    document.getElementById('view-crud')?.classList.add('hidden');
-    document.getElementById('view-schema-explorer')?.classList.add('hidden'); // INI KUNCINYA: Tutup Skema!
-    document.getElementById('search-container')?.classList.add('hidden'); // Sembunyikan Search
-
-    // 2. Buka Pintu Studio
-    document.getElementById('view-app-studio')?.classList.remove('hidden');
-
-    // 3. Update Header
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = "APP STUDIO";
-
-    // 4. Update Navigasi Sidebar (Sync Warna)
-    document.querySelectorAll('.nav-btn, #nav-app-studio, #nav-schema-explorer').forEach(b => {
-      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-      b.classList.add('text-slate-400');
-    });
-
-    const navBtn = document.getElementById('nav-app-studio');
-    if (navBtn) navBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-
-    // 5. Reset & Load Field
-    const fieldContainer = document.getElementById('st-fields-container');
-    if (fieldContainer) fieldContainer.innerHTML = '';
-    this.studioAddField();
-  },
 
   // --- SCHEMA SECTION ---
   viewSchemaExplorer() {
@@ -944,53 +793,7 @@ async studioMigrate() {
     }
   },
 
-  async init() {
-    if (!this.token) return;
 
-    // 1. Set UI Identitas
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('u-email').innerText = this.email;
-    document.getElementById('u-role').innerText = this.role;
-    document.getElementById('u-avatar').innerText = this.email.charAt(0);
-
-    const sysTools = document.getElementById('system-tools');
-    if (this.role === 'admin' && sysTools) sysTools.classList.remove('hidden');
-
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = "INITIALIZING SYSTEM...";
-
-    // 2. Ambil List Resources & Load Dashboard Config secara paralel
-    // Kita ambil config dashboard barengan dengan list resource biar makin cepat
-    const [resList, _] = await Promise.all([
-      this.get({ action: 'listResources' }),
-      this.loadDashboardConfigs() // Memastikan data config dashboard ditarik dari Cloud
-    ]);
-
-    if (resList.success) {
-      this.allResources = resList.resources;
-      this.fullAppData = {};
-
-      // 3. Pre-fetch Data Tabel
-      await Promise.all(resList.resources.map(async (res) => {
-        const detail = await this.get({ action: 'read', table: res.id });
-        if (detail.success) {
-          this.fullAppData[res.id] = { schema: detail.schema, rows: detail.rows };
-          this.resourceCache[res.id] = detail.rows;
-          this.schemaCache[res.id] = {
-            schema: detail.schema,
-            modes: detail.modes || { add: { can: true } }
-          };
-        }
-      }));
-
-      // 4. Finalisasi UI
-      this.renderSidebar();
-      if (titleEl) titleEl.innerText = "SYSTEM READY";
-
-      // Buka Dashboard Utama
-      this.openDashboard();
-    }
-  },
 
   async post(arg1, arg2) {
     try {
@@ -1872,77 +1675,77 @@ async loadResource(forceRefresh = false) {
       }
     }
   },
-renderTable(rows) {
-    const head = document.getElementById('t-head');
-    const body = document.getElementById('t-body');
-    const emptyState = document.getElementById('empty-state');
-    const viewMode = document.getElementById('view-mode')?.value || 'active';
+// renderTable(rows) {
+//     const head = document.getElementById('t-head');
+//     const body = document.getElementById('t-body');
+//     const emptyState = document.getElementById('empty-state');
+//     const viewMode = document.getElementById('view-mode')?.value || 'active';
 
-    // 1. DYNAMIC FIELDS FALLBACK
-    // Jika BE tidak kirim modes.browse, kita ambil key dari data pertama sebagai kolom
-    let fields = [];
-    if (this.modes && this.modes.browse && this.modes.browse.fields) {
-      fields = this.modes.browse.fields;
-    } else if (rows && rows.length > 0) {
-      // Ambil semua key kecuali ID dan is_deleted jika schema/modes kosong
-      fields = Object.keys(rows[0]).filter(k => k !== 'id' && k !== 'is_deleted');
-      console.warn("Using dynamic fields because modes.browse is missing.");
-    }
+//     // 1. DYNAMIC FIELDS FALLBACK
+//     // Jika BE tidak kirim modes.browse, kita ambil key dari data pertama sebagai kolom
+//     let fields = [];
+//     if (this.modes && this.modes.browse && this.modes.browse.fields) {
+//       fields = this.modes.browse.fields;
+//     } else if (rows && rows.length > 0) {
+//       // Ambil semua key kecuali ID dan is_deleted jika schema/modes kosong
+//       fields = Object.keys(rows[0]).filter(k => k !== 'id' && k !== 'is_deleted');
+//       console.warn("Using dynamic fields because modes.browse is missing.");
+//     }
 
-    // 2. UI LOGIC: Jika data kosong total
-    if (!rows || rows.length === 0) {
-      if (body) body.innerHTML = '';
-      if (emptyState) emptyState.classList.remove('hidden');
-      return;
-    }
+//     // 2. UI LOGIC: Jika data kosong total
+//     if (!rows || rows.length === 0) {
+//       if (body) body.innerHTML = '';
+//       if (emptyState) emptyState.classList.remove('hidden');
+//       return;
+//     }
     
-    if (emptyState) emptyState.classList.add('hidden');
+//     if (emptyState) emptyState.classList.add('hidden');
 
-    // 3. RENDER HEADER
-    if (head) {
-      head.innerHTML = `<tr>
-        ${fields.map(f => `
-          <th class="p-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">
-            ${this.schema && this.schema[f] ? this.schema[f].label : f.replace(/_/g, ' ')}
-          </th>`).join('')}
-        <th class="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-      </tr>`;
-    }
+//     // 3. RENDER HEADER
+//     if (head) {
+//       head.innerHTML = `<tr>
+//         ${fields.map(f => `
+//           <th class="p-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">
+//             ${this.schema && this.schema[f] ? this.schema[f].label : f.replace(/_/g, ' ')}
+//           </th>`).join('')}
+//         <th class="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+//       </tr>`;
+//     }
 
-    // 4. RENDER BODY
-    if (body) {
-      body.innerHTML = rows.map(row => {
-        const rowStr = JSON.stringify(row).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+//     // 4. RENDER BODY
+//     if (body) {
+//       body.innerHTML = rows.map(row => {
+//         const rowStr = JSON.stringify(row).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
         
-        return `
-          <tr class="hover:bg-blue-50/40 border-b border-slate-100 transition-colors">
-            ${fields.map(f => {
-              let val = (row[f] === undefined || row[f] === null) ? '-' : row[f];
-              const s = this.schema ? this.schema[f] : null;
+//         return `
+//           <tr class="hover:bg-blue-50/40 border-b border-slate-100 transition-colors">
+//             ${fields.map(f => {
+//               let val = (row[f] === undefined || row[f] === null) ? '-' : row[f];
+//               const s = this.schema ? this.schema[f] : null;
 
-              if (s?.type === 'currency' && val !== '-') {
-                val = new Intl.NumberFormat('id-ID', { 
-                  style: 'currency', currency: 'IDR', minimumFractionDigits: 0 
-                }).format(val);
-              }
-              return `<td class="p-6 font-medium text-slate-600 text-sm">${val}</td>`;
-            }).join('')}
+//               if (s?.type === 'currency' && val !== '-') {
+//                 val = new Intl.NumberFormat('id-ID', { 
+//                   style: 'currency', currency: 'IDR', minimumFractionDigits: 0 
+//                 }).format(val);
+//               }
+//               return `<td class="p-6 font-medium text-slate-600 text-sm">${val}</td>`;
+//             }).join('')}
             
-            <td class="p-6 text-right space-x-2 whitespace-nowrap">
-              ${(this.modes?.edit?.can || !this.modes) ? 
-                `<button onclick="app.openForm(${rowStr})" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">
-                  <i class="fa-solid fa-pen"></i>
-                </button>` : ''}
+//             <td class="p-6 text-right space-x-2 whitespace-nowrap">
+//               ${(this.modes?.edit?.can || !this.modes) ? 
+//                 `<button onclick="app.openForm(${rowStr})" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">
+//                   <i class="fa-solid fa-pen"></i>
+//                 </button>` : ''}
               
-              ${viewMode === 'active' && (this.modes?.delete?.can || !this.modes) ? 
-                `<button onclick="app.remove('${row.id}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">
-                  <i class="fa-solid fa-trash"></i>
-                </button>` : ''}
-            </td>
-          </tr>`;
-      }).join('');
-    }
-  },
+//               ${viewMode === 'active' && (this.modes?.delete?.can || !this.modes) ? 
+//                 `<button onclick="app.remove('${row.id}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">
+//                   <i class="fa-solid fa-trash"></i>
+//                 </button>` : ''}
+//             </td>
+//           </tr>`;
+//       }).join('');
+//     }
+//   },
 
   async save(e) {
     if (e) e.preventDefault();
@@ -2009,8 +1812,299 @@ renderTable(rows) {
       btn.disabled = false;
     }
   },
+async studioMigrate() {
+  const btn = document.getElementById('btn-migrate');
+  const tableName = document.getElementById('st-table-name').value;
+  const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
+  const fields = [];
+  
+  if (!tableName) return alert("Nama Tabel Wajib!");
 
+  fieldNodes.forEach(n => {
+    const colName = n.querySelector('.st-name').value;
+    const type = n.querySelector('.st-type').value;
 
+    // Ambil nilai relasi (Gaya stabil juragan)
+    // Gunakan querySelector yang langsung ke class agar akurat
+    const rTable = n.querySelector('.st-rel-table')?.value || '';
+    const rField = n.querySelector('.st-rel-field')?.value || '';
+
+    fields.push({
+      name: colName,
+      label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
+      type: type,
+      show: n.querySelector('.st-show').checked,
+      required: n.querySelector('.st-req').checked,
+      disabled: n.querySelector('.st-disabled').checked,
+      formula: n.querySelector('.st-formula').value || null,
+
+      // 🚀 FIX LOOKUP: Kita buat objek lookup jika type-nya LOOKUP
+      // Kita kirim string kosong jika input belum diisi, agar tidak langsung null total
+      lookup: (type === 'LOOKUP') ? {
+        table: rTable,
+        field: rField
+      } : null,
+
+      // --- INFO 3 SAKTI UNTUK AUTOFILL ---
+      autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value || '' : '',
+      autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value || '' : '',
+      autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value || '' : ''
+    });
+  });
+
+  // Proteksi UI
+  const originalText = btn.innerText;
+  btn.innerText = "MIGRATING...";
+  btn.disabled = true;
+
+  try {
+    // Gunakan fetch mode no-cors agar stabil tembus ke GAS
+    await fetch(BASE_APP_URL, {
+      method: 'POST',
+      mode: 'no-cors', 
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'migrate',
+        token: this.token || localStorage.getItem('sk_token'),
+        sheet: localStorage.getItem('sk_sheet'),
+        data: { 
+          tableName: tableName, 
+          fields: fields 
+        }
+      })
+    });
+
+    // Beri feedback ke user
+    alert("🚀 Instruksi Migrasi Tabel '" + tableName + "' Berhasil Dikirim!");
+    
+    setTimeout(() => {
+      location.reload();
+    }, 1000);
+
+  } catch (error) {
+    console.error("Migration Error:", error);
+    alert("Terjadi kesalahan jaringan.");
+    btn.innerText = originalText;
+    btn.disabled = false;
+  }
+  },
+
+    // --- STUDIO SECTION ---
+  openAppStudio() {
+    this.resetViews();
+    this.currentTable = 'APP_STUDIO';
+    this.currentView = 'studio'; // Update state view
+
+    // 1. HARD RESET UI (Tutup semua pintu view lainnya)
+    document.getElementById('view-crud')?.classList.add('hidden');
+    document.getElementById('view-schema-explorer')?.classList.add('hidden'); // INI KUNCINYA: Tutup Skema!
+    document.getElementById('search-container')?.classList.add('hidden'); // Sembunyikan Search
+
+    // 2. Buka Pintu Studio
+    document.getElementById('view-app-studio')?.classList.remove('hidden');
+
+    // 3. Update Header
+    const titleEl = document.getElementById('cur-title');
+    if (titleEl) titleEl.innerText = "APP STUDIO";
+
+    // 4. Update Navigasi Sidebar (Sync Warna)
+    document.querySelectorAll('.nav-btn, #nav-app-studio, #nav-schema-explorer').forEach(b => {
+      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+      b.classList.add('text-slate-400');
+    });
+
+    const navBtn = document.getElementById('nav-app-studio');
+    if (navBtn) navBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+
+    // 5. Reset & Load Field
+    const fieldContainer = document.getElementById('st-fields-container');
+    if (fieldContainer) fieldContainer.innerHTML = '';
+    this.studioAddField();
+  },
+studioAddField() {
+  const id = Date.now();
+  const html = `
+    <div id="st-f-${id}" class="p-6 bg-slate-50 rounded-[2rem] border border-slate-200 space-y-4 mb-4 animate-fade-in">
+      <div class="flex justify-between items-center">
+        <span class="text-[10px] font-black text-blue-600 tracking-widest uppercase">Konfigurasi Kolom</span>
+        <button onclick="this.parentElement.parentElement.remove()" class="text-red-400 hover:text-red-600 transition-all">
+          <i class="fa-solid fa-circle-xmark fa-lg"></i>
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-[9px] font-black mb-1 text-slate-400">ID KOLOM</label>
+          <input type="text" class="st-name w-full p-3 border rounded-xl font-bold text-sm" placeholder="ex: harga_satuan" oninput="app.syncStudioOptions()">
+        </div>
+        <div>
+          <label class="block text-[9px] font-black mb-1 text-slate-400">TIPE DATA</label>
+          <select class="st-type w-full p-3 border rounded-xl font-bold text-sm bg-white" onchange="app.toggleStudioUI('${id}', this.value)">
+            <option value="TEXT">TEXT</option>
+            <option value="NUMBER">NUMBER</option>
+            <option value="CURRENCY">CURRENCY (Rp)</option>
+            <option value="DATE">DATE</option>
+            <option value="LOOKUP">LOOKUP (RELASI)</option>
+            <option value="AUTOFILL">AUTOFILL (OTOMATIS)</option>
+            <option value="FORMULA">FORMULA</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="relasi-ui-${id}" class="hidden p-4 bg-blue-50 rounded-xl grid grid-cols-2 gap-4 border border-blue-100">
+          <div>
+            <label class="block text-[9px] font-black mb-1 text-blue-400">TABEL SUMBER</label>
+            <select class="st-rel-table w-full p-2 border rounded-lg text-xs font-bold bg-white" onchange="app.populateStudioFields('${id}', this.value)">
+              <option value="">-- Pilih Tabel --</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[9px] font-black mb-1 text-blue-400">KOLOM KUNCI (LABEL)</label>
+            <select class="st-rel-field w-full p-2 border rounded-lg text-xs font-bold bg-white">
+              <option value="">-- Pilih Kolom --</option>
+            </select>
+          </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-[9px] font-black mb-1 text-slate-400">LABEL TAMPILAN</label>
+          <input type="text" class="st-label w-full p-3 border rounded-xl text-sm font-bold" placeholder="Contoh: Harga Satuan">
+        </div>
+        <div>
+          <label class="block text-[9px] font-black mb-1 text-slate-400">FORMULA / REFERENCE</label>
+          <input type="text" class="st-formula w-full p-3 border rounded-xl text-sm font-bold" placeholder="Contoh: {qty}*{harga}">
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-6 pt-4 border-t border-slate-200">
+        <label class="flex items-center gap-2 text-[9px] font-black cursor-pointer group">
+          <input type="checkbox" class="st-show w-4 h-4 rounded shadow-sm" checked> 
+          <span class="group-hover:text-blue-600 transition-colors">TAMPIL</span>
+        </label>
+        <label class="flex items-center gap-2 text-[9px] font-black cursor-pointer group">
+          <input type="checkbox" class="st-req w-4 h-4 rounded shadow-sm"> 
+          <span class="group-hover:text-blue-600 transition-colors">WAJIB</span>
+        </label>
+        <label class="flex items-center gap-2 text-[9px] font-black cursor-pointer group text-red-500">
+          <input type="checkbox" class="st-disabled w-4 h-4 rounded shadow-sm"> 
+          <span class="group-hover:text-red-700 transition-colors uppercase">Lock (Read-Only)</span>
+        </label>
+      </div>
+    </div>`;
+    
+  document.getElementById('st-fields-container').insertAdjacentHTML('beforeend', html);
+  
+  // Ambil list tabel untuk dropdown relasi
+  if (this.resources) {
+    const relSelect = document.querySelector(`#st-f-${id} .st-rel-table`);
+    this.resources.forEach(res => {
+      const opt = document.createElement('option');
+      opt.value = res.id;
+      opt.textContent = res.label;
+      relSelect.appendChild(opt);
+    });
+  }
+
+  this.syncStudioOptions(id);
+  },
+
+  
+  async loadPermissions() {
+    console.log('[PERMISSION] Loading...');
+    const role = localStorage.getItem('sk_role');
+    
+    // Kirim request ke backend
+    const res = await this.get({
+      action: 'read',
+      table: 'config_permissions'
+    });
+
+    this.permissions = {};
+
+    // Jika Forbidden (Gagal), kita buatkan "Default Permission" agar UI tidak blank
+    if (!res.success) {
+      console.warn('[PERMISSION] Forbidden/Error. Menggunakan mode akses terbatas.');
+      // Kita beri akses browse ke semua resource yang ada agar dropdown tetap terisi
+      if (this.allResources) {
+        this.allResources.forEach(r => {
+          this.permissions[r.id] = { browse: true, add: false, edit: false, delete: false };
+        });
+      }
+      return true; // Tetap return true supaya init berlanjut
+    }
+
+    // Jika sukses, proses seperti biasa
+    res.rows.forEach(p => {
+      if (!p.resource || !p.role) return;
+      if (String(p.role).toLowerCase() !== role.toLowerCase()) return;
+      const resource = String(p.resource).toLowerCase().trim();
+      this.permissions[resource] = {
+        browse: String(p.can_browse).toUpperCase() === 'TRUE',
+        add: String(p.can_add).toUpperCase() === 'TRUE',
+        edit: String(p.can_edit).toUpperCase() === 'TRUE',
+        delete: String(p.can_delete).toUpperCase() === 'TRUE',
+        policy: String(p.ownership_policy || 'ALL').toUpperCase()
+      };
+    });
+
+    return true;
+  },
+
+  async init() {
+    if (!this.token) return;
+
+    // 1. UI Setup Awal
+    document.getElementById('login-screen')?.classList.add('hidden');
+    document.getElementById('u-email').innerText = this.email || '';
+    document.getElementById('u-role').innerText = this.role || '';
+    
+    const titleEl = document.getElementById('cur-title');
+    if (titleEl) titleEl.innerText = "SYNCHRONIZING...";
+
+    // 2. Ambil List Resource Dulu (Ini biasanya tidak forbidden)
+    const resList = await this.get({ action: 'listResources' });
+    if (!resList.success) {
+      alert("Koneksi gagal atau Token Expired");
+      return;
+    }
+    this.allResources = resList.resources;
+
+    // 3. Load Permissions (Sekarang sudah punya listResources untuk fallback)
+    await this.loadPermissions();
+
+    this.fullAppData = {};
+    this.resourceCache = {};
+    this.schemaCache = {};
+
+    // 4. Pre-fetch Data dengan Penanganan Error per Tabel
+    // Jika Staff dilarang baca satu tabel, tabel lain jangan ikut berhenti
+    await Promise.all(this.allResources.map(async (res) => {
+      try {
+        const detail = await this.get({ action: 'read', table: res.id });
+        
+        if (detail.success) {
+          this.fullAppData[res.id] = { schema: detail.schema, rows: detail.rows };
+          this.resourceCache[res.id] = detail.rows;
+          this.schemaCache[res.id] = {
+            schema: detail.schema,
+            modes: detail.modes || { add: { can: this.can(res.id, 'add') } }
+          };
+        } else {
+          console.warn(`[INIT] Tabel ${res.id} diblokir backend: ${detail.message}`);
+          // Buat schema kosong agar renderTable tidak pecah (crash)
+          this.schemaCache[res.id] = { schema: {}, modes: { add: { can: false } } };
+        }
+      } catch (e) {
+        console.error(`Error loading ${res.id}`, e);
+      }
+    }));
+
+    // 5. Render Akhir
+    this.renderSidebar();
+    if (titleEl) titleEl.innerText = "SYSTEM READY";
+    this.openDashboard();
+  }
 
 };
 app.init();
