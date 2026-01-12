@@ -528,6 +528,16 @@
     <script src="table.js"></script>
 
     <script>
+  window.addEventListener('load', () => {
+    if (typeof app !== 'undefined' && app.init) {
+      app.init();
+    } else {
+      console.error("Critical: script.js gagal dimuat atau objek 'app' tidak ditemukan!");
+    }
+  });
+</script>
+
+    <script>
       // Mobile sidebar functions - wait for DOM to be ready
       document.addEventListener("DOMContentLoaded", function () {
         // Initialize mobile sidebar functionality
@@ -633,14 +643,14 @@
       }
 
       // Ensure app.init is called after all scripts are loaded
-      window.addEventListener("load", () => {
-        console.log("Window loaded");
-        if (window.app && typeof window.app.init === "function") {
-          window.app.init();
-        } else {
-          console.error("app.init tidak ditemukan!");
-        }
-      });
+      // window.addEventListener("load", () => {
+      //   console.log("Window loaded");
+      //   if (window.app && typeof window.app.init === "function") {
+      //     window.app.init();
+      //   } else {
+      //     console.error("app.init tidak ditemukan!");
+      //   }
+      // });
     </script>
   </body>
 </html>

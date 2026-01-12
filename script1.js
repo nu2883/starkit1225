@@ -1,11 +1,8 @@
 
-// const BASE_URL = 'https://script.google.com/macros/s/AKfycbYycnldXTaimSg8NZ5dbCk-Xn4sqtQXho1Hq0S0Au-KuoFhsEBiXsWqTeTryOBhRsU/exec';
+const BASE_URL = 'https://script.google.com/macros/s/AKfycbYycnldXTaimSg8NZ5dbCk-Xn4sqtQXho1Hq0S0Au-KuoFhsEBiXsWqTeTryOBhRsU/exec';
+
 
 // 'https://script.google.com/macros/s/AKfycbxh1foEg_C7IlblKyZC-o4MtQblzFplUz6_CzZijJtk-cBE91oY-hS0gGJ8eK0wW-smjA/exec'
-
-// 1. Ambil dari storage
-const DYNAMIC_ENGINE_URL = localStorage.getItem('sk_engine_url');
-const DYNAMIC_SHEET_ID   = localStorage.getItem('sk_sheet');
 
 function showLoading(status) {
   const loader = document.getElementById('loader'); // Pastikan ID ini ada di HTML Anda
@@ -32,7 +29,6 @@ const app = {
     direction: null // 'asc' | 'desc' | null
   },
   dashboardConfigs: JSON.parse(localStorage.getItem('sk_dashboard_config')) || [],
-  permissions: {}, // Sekarang berbentuk Object Map
 
 
 
@@ -396,26 +392,6 @@ const app = {
     }
   },
 
-  // Fungsi pembantu agar kode selectResource lebih bersih
-  updateSidebarUI(id) {
-    // 1. SAPU BERSIH: Ambil SEMUA elemen yang mungkin punya warna biru
-    // Kita incar semua button di dalam nav
-    document.querySelectorAll('nav button, .nav-btn').forEach(b => {
-      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-      b.classList.add('text-slate-400');
-    });
-
-    // 2. WARNAI YANG BARU: Hanya tombol yang ID-nya pas dengan menu sekarang
-    const activeBtn = document.getElementById(`nav-${id}`);
-    if (activeBtn) {
-      activeBtn.classList.remove('text-slate-400');
-      activeBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-    }
-
-    // 3. UPDATE JUDUL
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = id.replace(/_/g, ' ').toUpperCase();
-  },
 
   // Fungsi pembantu agar navigasi tidak biru semua
 
@@ -462,55 +438,7 @@ const app = {
 
   // --- DASHBOARD SECTION ---
 
-  async selectResource(id) {
-    if (this.currentTable === id && this.currentView === 'data') return;
 
-    // 1. Matikan semua view (termasuk dashboard & crud)
-    this.resetViews();
-
-    // 2. Set State
-    this.currentTable = id;
-    this.currentView = 'data';
-
-    // 3. AKTIFKAN KEMBALI CONTAINER CRUD (Ini yang bikin tabel muncul)
-    const crudView = document.getElementById('view-crud');
-    const searchContainer = document.getElementById('search-container');
-
-    if (crudView) {
-      crudView.classList.remove('hidden'); // Membuka pintu utama
-      crudView.style.visibility = 'visible'; // Memastikan terlihat
-    }
-    if (searchContainer) searchContainer.classList.remove('hidden');
-
-    // 4. Update Header Judul
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = id.replace(/_/g, ' ').toUpperCase();
-
-    this.syncSidebarUI(id);
-
-    // 5. Load Data
-    if (this.resourceCache[id]) {
-      this.schema = this.schemaCache[id]?.schema || {};
-      this.renderTable(this.resourceCache[id]);
-      this.loadResource();
-    } else {
-      await this.loadResource();
-    }
-  },
-  renderSidebar() {
-    const list = document.getElementById('resource-list');
-    if (!list) return;
-
-    // Filter unik ID Tabel
-    const unique = [...new Map(this.allResources.map(item => [item.id, item])).values()];
-
-    list.innerHTML = unique.map(r => `
-          <button onclick="app.selectResource('${r.id}')" id="nav-${r.id}" 
-            class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-all text-left uppercase tracking-wider">
-            <i class="fa-solid fa-table text-[10px] opacity-40"></i> <span>${r.id}</span>
-          </button>
-        `).join('');
-  },
 
   // Tambahkan ke dalam objek app { ... }
 
@@ -799,7 +727,33 @@ const app = {
 
 
 
+  async post(arg1, arg2) {
+    try {
+      let finalPayload;
 
+      // JIKA DIPANGGIL: this.post({ action: '...', table: '...' }) -> (Dashboard)
+      if (typeof arg1 === 'object' && !arg2) {
+        finalPayload = { ...arg1, token: this.token };
+      }
+      // JIKA DIPANGGIL: this.post('create', data) -> (CRUD Biasa & Otomasi)
+      else {
+        finalPayload = {
+          action: arg1,
+          table: this.currentTable,
+          data: arg2,
+          token: this.token
+        };
+      }
+
+      const res = await fetch(BASE_URL, {
+        method: 'POST',
+        body: JSON.stringify(finalPayload)
+      });
+      return await res.json();
+    } catch (e) {
+      return { success: false, message: "Koneksi Terputus" };
+    }
+  },
 
   async saveAutomationRule() {
     const btn = event.target.closest('button');
@@ -1320,6 +1274,12 @@ const app = {
 
 
 
+
+
+
+
+
+
   openDashboard: async function () {
     this.resetViews();
     const titleEl = document.getElementById('cur-title');
@@ -1403,9 +1363,9 @@ const app = {
   filterTable(query) {
     const searchTerm = query.toLowerCase();
     const rawData = this.resourceCache[this.currentTable] || [];
-    if (!searchTerm) { this.renderTable(rawData); return; }
+    if (!searchTerm) { app.renderTable(rawData); return; }
     const filtered = rawData.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(searchTerm)));
-    this.renderTable(filtered);
+    app.renderTable(filtered);
   },
 
 // PERBAIKAN: Pembersihan ID Sheet dari URL
@@ -1421,271 +1381,239 @@ sheet: (function() {
         // Jika sudah ID bersih, langsung kembalikan
         return raw;
       })(),
+async get(params) {
+    try {
+        showLoading(true);
 
-
-/**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Fungsi untuk mengambil data dan menyusun Schema agar Form menjadi Pintar.
-   */
-/**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Fungsi untuk mengambil data dan menyusun Schema agar Form menjadi Pintar.
-   */
-/**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Target: 1000 SA Users - Secure & Scalable CRUD
-   */
-  // async loadResource(forceRefresh = false) {
-  //   const vm = document.getElementById('view-mode')?.value || 'active';
-  //   const btnRefresh = document.getElementById('btn-refresh');
-  //   const btnAdd = document.getElementById('btn-add');
-  //   const titleEl = document.getElementById('cur-title');
-
-  //   if (btnRefresh) btnRefresh.classList.add('animate-spin');
-  //   if (titleEl) titleEl.innerText = "SYNCHRONIZING " + this.currentTable.toUpperCase() + "...";
-
-  //   if (forceRefresh) {
-  //     this.resourceCache[this.currentTable] = [];
-  //   }
-
-  //   try {
-  //     const d = await this.get({
-  //       action: 'read',
-  //       table: this.currentTable,
-  //       viewMode: vm,
-  //       _t: forceRefresh ? Date.now() : null
-  //     });
-
-  //     if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-
-  //     if (d && d.success) {
-  //       // --- 1. DEBUG RAW DATA DARI BACKEND ---
-  //       console.group(`DEBUG SCHEMA: ${this.currentTable}`);
-  //       console.log("Raw Schema from Backend:", d.schema);
-
-  //       // --- 2. PROSES TRANSFORMASI SCHEMA ---
-  //       const rawSchema = d.schema;
-  //       this.schema = {};
-
-  //       if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-  //         const headers = rawSchema[0]; // Baris 1: Header
-  //         const configs = rawSchema[1]; // Baris 2: Config JSON
-          
-  //         headers.forEach((h, index) => {
-  //           let config = configs[index];
-            
-  //           // Konversi String JSON menjadi Object
-  //           if (typeof config === 'string' && config.trim() !== "") {
-  //             try { 
-  //               config = JSON.parse(config); 
-  //             } catch(e) { 
-  //               console.warn(`Gagal parse JSON pada kolom [${h}]:`, config);
-  //               config = { label: h.replace(/_/g, ' ').toUpperCase() }; 
-  //             }
-  //           }
-            
-  //           // Simpan ke mapping final
-  //           this.schema[h] = (config && typeof config === 'object') ? config : { label: h.replace(/_/g, ' ').toUpperCase() };
-  //         });
-  //       } else {
-  //         console.warn("Format schema tidak dikenal atau hanya 1 baris. Menggunakan default.");
-  //         this.schema = rawSchema || {};
-  //       }
-
-  //       // --- 3. DEBUG HASIL AKHIR SCHEMA ---
-  //       console.log("Transformed Schema (Object Mapping):", this.schema);
-  //       console.table(this.schema); // Menampilkan dalam bentuk tabel di console agar enak dibaca
-  //       console.groupEnd();
-
-  //       // --- 4. SINKRONISASI MODES & DATA ---
-  //       this.modes = d.modes || { 
-  //         add: { can: true }, 
-  //         edit: { can: true }, 
-  //         delete: { can: true },
-  //         browse: { can: true } 
-  //       };
-
-  //       const rows = d.rows || [];
-  //       this.resourceCache[this.currentTable] = rows;
-
-  //       // UI Updates
-  //       if (btnAdd) {
-  //         const canAdd = (this.modes?.add?.can === true) || (this.modes?.can_add === true);
-  //         if (canAdd && vm === 'active') {
-  //           btnAdd.classList.remove('hidden');
-  //           btnAdd.classList.add('flex');
-  //         } else {
-  //           btnAdd.classList.add('hidden');
-  //           btnAdd.classList.remove('flex');
-  //         }
-  //       }
-
-  //       this.renderTable(rows);
-
-  //       const dashView = document.getElementById('view-dashboard');
-  //       if (dashView && !dashView.classList.contains('hidden')) {
-  //         this.renderDashboard();
-  //       }
-
-  //       if (titleEl) titleEl.innerText = this.currentTable.replace(/_/g, ' ').toUpperCase();
-
-  //     } else {
-  //       console.error("Gagal memuat data:", d?.message);
-  //       alert("Gagal Sinkronisasi: " + (d?.message || "Koneksi terputus"));
-  //     }
-
-  //   } catch (err) {
-  //     console.error("LoadResource Error:", err);
-  //     if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-  //     if (titleEl) titleEl.innerText = "CONNECTION ERROR";
-  //   }
-  // },
-  async save(e) {
-    if (e) e.preventDefault();
-    
-    // 1. PROTEKSI: Pastikan fields tersedia
-    const mode = this.editingId ? 'edit' : 'add';
-    const fields = this.modes?.[mode]?.fields || Object.keys(this.schema).filter(k => !['id', 'created_at', 'created_by', 'deleted_at'].includes(k));
-
-    const data = {};
-    if (this.editingId) data.id = this.editingId;
-
-    // 2. Kumpulkan data dari Form
-    // Kita ambil dari input biasa DAN input hidden (untuk field yang di-lock/autofill)
-    fields.forEach(f => {
-      const el = document.getElementById(`f-${f}`) || document.getElementById(`f-${f}-hidden`);
-      if (el) {
-        let val = el.value;
-        const s = this.schema[f];
-        
-        // Konversi tipe data agar di Spreadsheet tidak jadi teks semua
-        if (s?.type === 'NUMBER' || s?.type === 'CURRENCY' || s?.type === 'FORMULA') {
-          val = parseFloat(val) || 0;
+        // --- PERBAIKAN RADIKAL: Ekstraksi ID di dalam fungsi get ---
+        let sheetId = localStorage.getItem('sk_sheet') || '';
+        if (sheetId.includes('/d/')) {
+            sheetId = sheetId.split('/d/')[1].split('/')[0];
         }
-        data[f] = val;
-      }
+
+        const q = new URLSearchParams({
+            ...params,
+            token: this.token,
+            sheet: sheetId // Kirim ID bersih, bukan URL!
+        }).toString();
+
+        const res = await fetch(`${BASE_APP_URL}?${q}`);
+        
+        // Google Script 404/CORS biasanya karena URL salah atau ID salah
+        if (!res.ok) throw new Error(`Server Response Error: ${res.status}`);
+
+        const data = await res.json();
+        showLoading(false);
+        return data;
+    } catch (e) {
+        console.error("Fetch Error:", e);
+        showLoading(false);
+        return { success: false, message: "Koneksi Terputus / Server Error" };
+    }
+},
+
+async loadResource(forceRefresh = false) {
+    const vm = document.getElementById('view-mode')?.value || 'active';
+    const btnRefresh = document.getElementById('btn-refresh');
+    const btnAdd = document.getElementById('btn-add');
+
+    if (btnRefresh) btnRefresh.classList.add('animate-spin');
+
+    if (forceRefresh) {
+      this.resourceCache[this.currentTable] = [];
+    }
+
+    const d = await this.get({
+      action: 'read',
+      table: this.currentTable,
+      viewMode: vm,
+      _t: forceRefresh ? Date.now() : null
     });
 
-    // 3. Validasi sederhana
-    const requiredMissing = fields.filter(f => this.schema[f]?.required && !data[f]);
-    if (requiredMissing.length > 0) {
-      alert(`Mohon lengkapi data: ${requiredMissing.map(f => this.schema[f].label || f).join(', ')}`);
-      return;
-    }
+    if (btnRefresh) btnRefresh.classList.remove('animate-spin');
 
-    // 4. Kirim ke Backend
-    const btn = document.getElementById('btn-commit');
-    const originalText = btn.innerText;
-    btn.innerText = "SAVING...";
-    btn.disabled = true;
+    if (d && d.success) {
+      const rows = d.rows || [];
+      this.schema = d.schema || {};
+      
+      // PERBAIKAN: Berikan fallback {} agar tidak error 'undefined' saat baca .add atau .browse
+      this.modes = d.modes || { 
+        add: { can: false }, 
+        edit: { can: false }, 
+        delete: { can: false },
+        browse: { can: true } 
+      };
 
-    try {
-      const res = await fetch(DYNAMIC_ENGINE_URL, {
-        method: 'POST',
-        mode: 'no-cors', // Penting untuk Google Apps Script
-        body: JSON.stringify({
-          action: this.editingId ? 'update' : 'create',
-          table: this.currentTable,
-          token: this.token,
-          sheet: localStorage.getItem('sk_sheet'),
-          data: data
-        })
-      });
+      this.resourceCache[this.currentTable] = rows;
 
-      // Karena no-cors, kita tidak bisa baca response body secara detail
-      // Kita asumsikan berhasil jika tidak ada error network, lalu refresh data
-      // alert("Data berhasil dikirim!");
-      this.closeForm();
-      await this.loadResource(true); // Refresh tabel agar data baru muncul
-    } catch (err) {
-      console.error("Save Error:", err);
-      alert("Gagal menyimpan data. Cek koneksi atau izin akses.");
-    } finally {
-      btn.innerText = originalText;
-      btn.disabled = false;
+      // Proteksi tombol Add
+      if (btnAdd) {
+        // Menggunakan Optional Chaining (?.) agar aman jika .add tidak ada
+        if (this.modes?.add?.can) {
+          btnAdd.classList.remove('hidden');
+        } else {
+          btnAdd.classList.add('hidden');
+        }
+      }
+
+      app.renderTable(rows);
+
+      if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+        this.renderDashboard();
+      }
     }
   },
-  
-// async studioMigrate() {
-//   const btn = document.getElementById('btn-migrate');
-//   const tableName = document.getElementById('st-table-name').value;
-//   const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
-//   const fields = [];
-  
-//   if (!tableName) return alert("Nama Tabel Wajib!");
+// renderTable(rows) {
+//     const head = document.getElementById('t-head');
+//     const body = document.getElementById('t-body');
+//     const emptyState = document.getElementById('empty-state');
+//     const viewMode = document.getElementById('view-mode')?.value || 'active';
 
-//   fieldNodes.forEach(n => {
-//     const colName = n.querySelector('.st-name').value;
-//     const type = n.querySelector('.st-type').value;
+//     // 1. DYNAMIC FIELDS FALLBACK
+//     // Jika BE tidak kirim modes.browse, kita ambil key dari data pertama sebagai kolom
+//     let fields = [];
+//     if (this.modes && this.modes.browse && this.modes.browse.fields) {
+//       fields = this.modes.browse.fields;
+//     } else if (rows && rows.length > 0) {
+//       // Ambil semua key kecuali ID dan is_deleted jika schema/modes kosong
+//       fields = Object.keys(rows[0]).filter(k => k !== 'id' && k !== 'is_deleted');
+//       console.warn("Using dynamic fields because modes.browse is missing.");
+//     }
 
-//     // Ambil nilai relasi (Gaya stabil juragan)
-//     // Gunakan querySelector yang langsung ke class agar akurat
-//     const rTable = n.querySelector('.st-rel-table')?.value || '';
-//     const rField = n.querySelector('.st-rel-field')?.value || '';
-
-//     fields.push({
-//       name: colName,
-//       label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
-//       type: type,
-//       show: n.querySelector('.st-show').checked,
-//       required: n.querySelector('.st-req').checked,
-//       disabled: n.querySelector('.st-disabled').checked,
-//       formula: n.querySelector('.st-formula').value || null,
-
-//       // 🚀 FIX LOOKUP: Kita buat objek lookup jika type-nya LOOKUP
-//       // Kita kirim string kosong jika input belum diisi, agar tidak langsung null total
-//       lookup: (type === 'LOOKUP') ? {
-//         table: rTable,
-//         field: rField
-//       } : null,
-
-//       // --- INFO 3 SAKTI UNTUK AUTOFILL ---
-//       autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value || '' : '',
-//       autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value || '' : '',
-//       autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value || '' : ''
-//     });
-//   });
-
-//   // Proteksi UI
-//   const originalText = btn.innerText;
-//   btn.innerText = "MIGRATING...";
-//   btn.disabled = true;
-
-//   try {
-//     // Gunakan fetch mode no-cors agar stabil tembus ke GAS
-//     await fetch(BASE_APP_URL, {
-//       method: 'POST',
-//       mode: 'no-cors', 
-//       headers: { 'Content-Type': 'text/plain' },
-//       body: JSON.stringify({
-//         action: 'migrate',
-//         token: this.token || localStorage.getItem('sk_token'),
-//         sheet: localStorage.getItem('sk_sheet'),
-//         data: { 
-//           tableName: tableName, 
-//           fields: fields 
-//         }
-//       })
-//     });
-
-//     // Beri feedback ke user
-//     alert("🚀 Instruksi Migrasi Tabel '" + tableName + "' Berhasil Dikirim!");
+//     // 2. UI LOGIC: Jika data kosong total
+//     if (!rows || rows.length === 0) {
+//       if (body) body.innerHTML = '';
+//       if (emptyState) emptyState.classList.remove('hidden');
+//       return;
+//     }
     
-//     setTimeout(() => {
-//       location.reload();
-//     }, 1000);
+//     if (emptyState) emptyState.classList.add('hidden');
 
-//   } catch (error) {
-//     console.error("Migration Error:", error);
-//     alert("Terjadi kesalahan jaringan.");
-//     btn.innerText = originalText;
-//     btn.disabled = false;
-//   }
+//     // 3. RENDER HEADER
+//     if (head) {
+//       head.innerHTML = `<tr>
+//         ${fields.map(f => `
+//           <th class="p-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">
+//             ${this.schema && this.schema[f] ? this.schema[f].label : f.replace(/_/g, ' ')}
+//           </th>`).join('')}
+//         <th class="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
+//       </tr>`;
+//     }
+
+//     // 4. RENDER BODY
+//     if (body) {
+//       body.innerHTML = rows.map(row => {
+//         const rowStr = JSON.stringify(row).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+        
+//         return `
+//           <tr class="hover:bg-blue-50/40 border-b border-slate-100 transition-colors">
+//             ${fields.map(f => {
+//               let val = (row[f] === undefined || row[f] === null) ? '-' : row[f];
+//               const s = this.schema ? this.schema[f] : null;
+
+//               if (s?.type === 'currency' && val !== '-') {
+//                 val = new Intl.NumberFormat('id-ID', { 
+//                   style: 'currency', currency: 'IDR', minimumFractionDigits: 0 
+//                 }).format(val);
+//               }
+//               return `<td class="p-6 font-medium text-slate-600 text-sm">${val}</td>`;
+//             }).join('')}
+            
+//             <td class="p-6 text-right space-x-2 whitespace-nowrap">
+//               ${(this.modes?.edit?.can || !this.modes) ? 
+//                 `<button onclick="app.openForm(${rowStr})" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all">
+//                   <i class="fa-solid fa-pen"></i>
+//                 </button>` : ''}
+              
+//               ${viewMode === 'active' && (this.modes?.delete?.can || !this.modes) ? 
+//                 `<button onclick="app.remove('${row.id}')" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-[10px] font-black uppercase hover:bg-red-600 hover:text-white transition-all">
+//                   <i class="fa-solid fa-trash"></i>
+//                 </button>` : ''}
+//             </td>
+//           </tr>`;
+//       }).join('');
+//     }
 //   },
 
+
+async studioMigrate() {
+  const btn = document.getElementById('btn-migrate');
+  const tableName = document.getElementById('st-table-name').value;
+  const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
+  const fields = [];
+  
+  if (!tableName) return alert("Nama Tabel Wajib!");
+
+  fieldNodes.forEach(n => {
+    const colName = n.querySelector('.st-name').value;
+    const type = n.querySelector('.st-type').value;
+
+    // Ambil nilai relasi (Gaya stabil juragan)
+    // Gunakan querySelector yang langsung ke class agar akurat
+    const rTable = n.querySelector('.st-rel-table')?.value || '';
+    const rField = n.querySelector('.st-rel-field')?.value || '';
+
+    fields.push({
+      name: colName,
+      label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
+      type: type,
+      show: n.querySelector('.st-show').checked,
+      required: n.querySelector('.st-req').checked,
+      disabled: n.querySelector('.st-disabled').checked,
+      formula: n.querySelector('.st-formula').value || null,
+
+      // 🚀 FIX LOOKUP: Kita buat objek lookup jika type-nya LOOKUP
+      // Kita kirim string kosong jika input belum diisi, agar tidak langsung null total
+      lookup: (type === 'LOOKUP') ? {
+        table: rTable,
+        field: rField
+      } : null,
+
+      // --- INFO 3 SAKTI UNTUK AUTOFILL ---
+      autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value || '' : '',
+      autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value || '' : '',
+      autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value || '' : ''
+    });
+  });
+
+  // Proteksi UI
+  const originalText = btn.innerText;
+  btn.innerText = "MIGRATING...";
+  btn.disabled = true;
+
+  try {
+    // Gunakan fetch mode no-cors agar stabil tembus ke GAS
+    await fetch(BASE_APP_URL, {
+      method: 'POST',
+      mode: 'no-cors', 
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'migrate',
+        token: this.token || localStorage.getItem('sk_token'),
+        sheet: localStorage.getItem('sk_sheet'),
+        data: { 
+          tableName: tableName, 
+          fields: fields 
+        }
+      })
+    });
+
+    // Beri feedback ke user
+    alert("🚀 Instruksi Migrasi Tabel '" + tableName + "' Berhasil Dikirim!");
+    
+    setTimeout(() => {
+      location.reload();
+    }, 1000);
+
+  } catch (error) {
+    console.error("Migration Error:", error);
+    alert("Terjadi kesalahan jaringan.");
+    btn.innerText = originalText;
+    btn.disabled = false;
+  }
+  },
+
     // --- STUDIO SECTION ---
-  
-  
   openAppStudio() {
     this.resetViews();
     this.currentTable = 'APP_STUDIO';
@@ -1806,12 +1734,11 @@ studioAddField() {
   },
 
   
-
-
   async loadPermissions() {
     console.log('[PERMISSION] Loading...');
     const role = localStorage.getItem('sk_role');
     
+    // Kirim request ke backend
     const res = await this.get({
       action: 'read',
       table: 'config_permissions'
@@ -1819,20 +1746,22 @@ studioAddField() {
 
     this.permissions = {};
 
+    // Jika Forbidden (Gagal), kita buatkan "Default Permission" agar UI tidak blank
     if (!res.success) {
       console.warn('[PERMISSION] Forbidden/Error. Menggunakan mode akses terbatas.');
+      // Kita beri akses browse ke semua resource yang ada agar dropdown tetap terisi
       if (this.allResources) {
         this.allResources.forEach(r => {
-          this.permissions[r.id.toLowerCase().trim()] = { browse: true, add: false, edit: false, delete: false };
+          this.permissions[r.id] = { browse: true, add: false, edit: false, delete: false };
         });
       }
-      return true;
+      return true; // Tetap return true supaya init berlanjut
     }
 
+    // Jika sukses, proses seperti biasa
     res.rows.forEach(p => {
       if (!p.resource || !p.role) return;
       if (String(p.role).toLowerCase() !== role.toLowerCase()) return;
-      
       const resource = String(p.resource).toLowerCase().trim();
       this.permissions[resource] = {
         browse: String(p.can_browse).toUpperCase() === 'TRUE',
@@ -1843,357 +1772,286 @@ studioAddField() {
       };
     });
 
-    console.log('[PERMISSION] Final Map:', this.permissions);
     return true;
   },
-
-  can(resource, action) {
-    if (!this.role) return false;
-    if (this.role.toUpperCase() === 'ADMIN') return true;
-
-    const resKey = String(resource).toLowerCase().trim();
-    const perm = this.permissions[resKey];
-
-    if (!perm) return false;
-    return perm[action] === true;
-  },
-
-
-
-async get(params) {
-    try {
-      showLoading(true);
-
-      // 1. Ambil URL Engine terbaru dari storage
-      const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
-      
-      // 2. Ekstraksi ID agar BE tidak pusing
-      let sheetId = localStorage.getItem('sk_sheet') || '';
-      if (sheetId.includes('/d/')) {
-        sheetId = sheetId.split('/d/')[1].split('/')[0];
-      }
-
-      // 3. Susun Parameter (Pastikan token & ua ada)
-      const q = new URLSearchParams({
-        ...params,
-        token: this.token || localStorage.getItem('sk_token'), // Ambil dari property atau storage
-        sheet: sheetId,
-        ua: navigator.userAgent 
-      }).toString();
-
-      // DEBUGGING: Cek di Console F12 apakah datanya sudah benar
-      console.log("Target Engine:", dynamicEngineUrl);
-      console.log("Payload GET:", q);
-
-      // 4. Eksekusi Fetch
-      const res = await fetch(`${dynamicEngineUrl}?${q}`);
-      
-      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-
-      const data = await res.json();
-      
-      // 5. Cek respon dari Backend Obsidian
-      if (data.success === false) {
-        console.warn("BE Reject:", data.message);
-        // Jika token expired di sisi BE, kita bisa tahu lewat sini
-        if (data.message && data.message.includes("Expired")) {
-           alert("Sesi habis, silakan login ulang.");
-           this.logout(); 
-        }
-      }
-
-      showLoading(false);
-      return data;
-    } catch (e) {
-      console.error("Fetch Error:", e);
-      showLoading(false);
-      // Ini yang memicu alert di UI Juragan
-      return { success: false, message: "Koneksi Terputus / Server Error" };
-    }
-  },
-
-  
-async post(arg1, arg2) {
-    try {
-      let finalPayload;
-      
-      // --- PERBAIKAN 1: Ekstraksi ID Brankas (Sama seperti fungsi get) ---
-      let sheetId = localStorage.getItem('sk_sheet') || '';
-      if (sheetId.includes('/d/')) {
-        sheetId = sheetId.split('/d/')[1].split('/')[0];
-      }
-
-      // JIKA DIPANGGIL: this.post({ action: '...', table: '...' }) -> (Dashboard/Sync)
-      if (typeof arg1 === 'object' && !arg2) {
-        finalPayload = { 
-          ...arg1, 
-          token: this.token,
-          sheet: sheetId,           // 🟢 WAJIB: Agar Engine tahu brankas mana
-          ua: navigator.userAgent   // 🟢 WAJIB: Untuk Session Binding
-        };
-      }
-      // JIKA DIPANGGIL: this.post('create', data) -> (CRUD Biasa & Otomasi)
-      else {
-        finalPayload = {
-          action: arg1,
-          table: this.currentTable,
-          data: arg2,
-          token: this.token,
-          sheet: sheetId,           // 🟢 WAJIB
-          ua: navigator.userAgent   // 🟢 WAJIB
-        };
-      }
-
-      // --- PERBAIKAN 2: Gunakan BASE_URL dinamis dari LocalStorage ---
-      // Pastikan di atas script, const BASE_URL = localStorage.getItem('sk_engine_url')
-      const res = await fetch(BASE_URL, {
-        method: 'POST',
-        // 🔴 PERBAIKAN 3: Jangan gunakan 'no-cors' agar bisa baca res.json()
-        body: JSON.stringify(finalPayload)
-      });
-
-      return await res.json();
-    } catch (e) {
-      console.error("Post Error:", e);
-      return { success: false, message: "Koneksi ke Engine Terputus" };
-    }
-  },
-
-
-
-
-
-  /**
-   * LOAD RESOURCE - Fungsi yang dipanggil saat ganti tabel
-   */
-  // async loadResource(forceRefresh = false) {
-  //   const tableId = this.currentTable;
-  //   if (!tableId) return;
-
-  //   // Ambil metadata dari cache
-  //   const cache = this.schemaCache[tableId];
-  //   if (!cache) return;
-
-  //   this.schema = cache.schema;
-  //   this.modes = cache.modes; // Di sini modes (boolean) masuk ke table.js
-
-  //   const rows = forceRefresh ? 
-  //     (await this.get({ action: 'read', table: tableId })).rows : 
-  //     this.resourceCache[tableId];
-
-  //   this.renderTable(rows);
-    
-  //   // Update Title UI
-  //   const titleEl = document.getElementById('cur-title');
-  //   if (titleEl) titleEl.innerText = tableId.replace(/_/g, ' ').toUpperCase();
-  // },
 
   async init() {
     if (!this.token) return;
 
-    if (!this.role) this.role = localStorage.getItem('sk_role') || '';
-    
+    // 1. UI Setup Awal
     document.getElementById('login-screen')?.classList.add('hidden');
     document.getElementById('u-email').innerText = this.email || '';
     document.getElementById('u-role').innerText = this.role || '';
     
-    const systemTools = document.getElementById('system-tools');
-    if (systemTools) {
-      this.role?.toUpperCase() === 'ADMIN' ? 
-        systemTools.classList.remove('hidden') : systemTools.classList.add('hidden');
-    }
-
     const titleEl = document.getElementById('cur-title');
     if (titleEl) titleEl.innerText = "SYNCHRONIZING...";
 
-    await this.loadPermissions();
-    // DEBUG 1: Cek apakah permissions sudah terisi
-    // console.log("DEBUG 1 - Permissions Map:", this.permissions);
-
+    // 2. Ambil List Resource
     const resList = await this.get({ action: 'listResources' });
     if (!resList.success) {
       alert("Koneksi gagal atau Token Expired");
-      auth.logout();
       return;
     }
     this.allResources = resList.resources;
+
+    // 3. Load Permissions
+    await this.loadPermissions();
 
     this.fullAppData = {};
     this.resourceCache = {};
     this.schemaCache = {};
 
+    // 4. Pre-fetch Data dengan Filter Soft Delete & Handling Akses Staff
     await Promise.all(this.allResources.map(async (res) => {
       try {
         const detail = await this.get({ action: 'read', table: res.id });
         
         if (detail.success) {
           this.fullAppData[res.id] = { schema: detail.schema, rows: detail.rows };
-          this.resourceCache[res.id] = detail.rows;
+          
+          // Filter Soft Delete agar data terhapus tidak muncul di lookup/tabel
+          this.resourceCache[res.id] = detail.rows.filter(row => !row.deleted_at);
           
           this.schemaCache[res.id] = {
             schema: detail.schema,
-            modes: detail.modes || {
-              add: this.can(res.id, 'add'),
-              edit: this.can(res.id, 'edit'),
-              delete: this.can(res.id, 'delete'),
-              browse: { fields: Object.keys(detail.schema) }
-            }
+            modes: detail.modes || { add: { can: this.can(res.id, 'add') } }
           };
-          // DEBUG 2: Cek apakah rakitan modes untuk tiap tabel benar
-          // console.log(`DEBUG 2 - Table ${res.id} Modes:`, this.schemaCache[res.id].modes);
-
         } else {
-          console.warn(`[INIT] Tabel ${res.id} diblokir: ${detail.message}`);
-          this.schemaCache[res.id] = { 
-            schema: {}, 
-            modes: { add: false, edit: false, delete: false } 
-          };
+          // Jika Staff diblokir, kita beri array kosong agar .map di populateLookup tidak error
+          console.warn(`[INIT] Akses Tabel ${res.id} terbatas untuk role ${this.role}`);
+          this.resourceCache[res.id] = []; 
+          this.schemaCache[res.id] = { schema: {}, modes: { add: { can: false } } };
         }
       } catch (e) {
         console.error(`Error loading ${res.id}`, e);
+        this.resourceCache[res.id] = [];
       }
     }));
 
+    // 5. Render Akhir
     this.renderSidebar();
     if (titleEl) titleEl.innerText = "SYSTEM READY";
     this.openDashboard();
   },
 
-  // WAJIB: Pastikan loadResource mengambil data dari schemaCache!
-  // async loadResource(forceRefresh = false) {
-  //   const tableId = this.currentTable;
-  //   if (!tableId) return;
+  async openForm(data = null) {
+    this.editingId = data ? data.id : null;
+    const modal = document.getElementById('f-modal');
+    const container = document.getElementById('f-fields');
+    const title = document.getElementById('modal-title');
 
-  //   const cache = this.schemaCache[tableId];
-  //   if (!cache) return;
+    if (!modal || !container) return;
 
-  //   // INI KUNCINYA: Memindahkan cache ke variabel aktif app
-  //   this.schema = cache.schema;
-  //   this.modes = cache.modes; 
-    
-  //   // DEBUG 3: Cek apakah this.modes sudah terisi sebelum render
-  //   // console.log("DEBUG 3 - Current app.modes before render:", this.modes);
+    title.innerText = this.editingId
+      ? `EDIT ${this.currentTable.toUpperCase()}`
+      : `NEW ${this.currentTable.toUpperCase()}`;
+    modal.classList.replace('hidden', 'flex');
 
-  //   const rows = forceRefresh ? 
-  //     (await this.get({ action: 'read', table: tableId })).rows : 
-  //     this.resourceCache[tableId];
+    // 🔥 Proteksi Fields
+    let fields = (this.editingId ? this.modes?.edit?.fields : this.modes?.add?.fields)
+      || Object.keys(this.schema);
 
-  //   this.renderTable(rows);
-    
-  //   const titleEl = document.getElementById('cur-title');
-  //   if (titleEl) titleEl.innerText = tableId.replace(/_/g, ' ').toUpperCase();
-  // },
-
-  /**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Target: 1000 SA Users - Secure & Scalable CRUD
-   */
-  async loadResource(forceRefresh = false) {
-    const vm = document.getElementById('view-mode')?.value || 'active';
-    const btnRefresh = document.getElementById('btn-refresh');
-    const btnAdd = document.getElementById('btn-add');
-    const titleEl = document.getElementById('cur-title');
-
-    if (btnRefresh) btnRefresh.classList.add('animate-spin');
-    if (titleEl) titleEl.innerText = "SYNCHRONIZING " + this.currentTable.toUpperCase() + "...";
-
-    if (forceRefresh) {
-      this.resourceCache[this.currentTable] = [];
+    if (fields) {
+      const lookupFields = Object.keys(this.schema)
+        .filter(f => this.schema[f]?.type === 'LOOKUP');
+      fields = [...new Set([...fields, ...lookupFields])];
     }
 
-    try {
-      const d = await this.get({
-        action: 'read',
-        table: this.currentTable,
-        viewMode: vm,
-        _t: forceRefresh ? Date.now() : null
-      });
+    // Build Form
+    let html = '';
+    for (const f of fields) {
+      const s = this.schema[f] || { type: 'TEXT', label: f };
+      if (['id', 'created_at', 'created_by', 'deleted_at'].includes(f) || s.hidden) continue;
 
-      if (btnRefresh) btnRefresh.classList.remove('animate-spin');
+      const val = data ? (data[f] ?? '') : '';
+      const isLocked = String(s.disabled).toLowerCase() === 'true' || s.type === 'AUTOFILL' || s.type === 'FORMULA' || (s.formula && String(s.formula) !== 'null');
+      const lockClass = isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50 text-slate-700';
 
-      if (d && d.success) {
-        // --- 1. DEBUG RAW DATA DARI BACKEND ---
-        console.group(`DEBUG SCHEMA: ${this.currentTable}`);
-        console.log("Raw Schema from Backend:", d.schema);
+      html += `<div class="mb-4"><label class="block text-[10px] font-black text-slate-400 uppercase mb-2">${s.label || f} ${s.required ? '<span class="text-red-500">*</span>' : ''}</label>`;
 
-        // --- 2. PROSES TRANSFORMASI SCHEMA ---
-        const rawSchema = d.schema;
-        this.schema = {};
-
-        if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-          const headers = rawSchema[0]; // Baris 1: Header
-          const configs = rawSchema[1]; // Baris 2: Config JSON
-          
-          headers.forEach((h, index) => {
-            let config = configs[index];
-            
-            // Konversi String JSON menjadi Object
-            if (typeof config === 'string' && config.trim() !== "") {
-              try { 
-                config = JSON.parse(config); 
-              } catch(e) { 
-                console.warn(`Gagal parse JSON pada kolom [${h}]:`, config);
-                config = { label: h.replace(/_/g, ' ').toUpperCase() }; 
-              }
-            }
-            
-            // Simpan ke mapping final
-            this.schema[h] = (config && typeof config === 'object') ? config : { label: h.replace(/_/g, ' ').toUpperCase() };
-          });
-        } else {
-          console.warn("Format schema tidak dikenal atau hanya 1 baris. Menggunakan default.");
-          this.schema = rawSchema || {};
-        }
-
-        // --- 3. DEBUG HASIL AKHIR SCHEMA ---
-        console.log("Transformed Schema (Object Mapping):", this.schema);
-        console.table(this.schema); // Menampilkan dalam bentuk tabel di console agar enak dibaca
-        console.groupEnd();
-
-        // --- 4. SINKRONISASI MODES & DATA ---
-        this.modes = d.modes || { 
-          add: { can: true }, 
-          edit: { can: true }, 
-          delete: { can: true },
-          browse: { can: true } 
-        };
-
-        const rows = d.rows || [];
-        this.resourceCache[this.currentTable] = rows;
-
-        // UI Updates
-        if (btnAdd) {
-          const canAdd = (this.modes?.add?.can === true) || (this.modes?.can_add === true);
-          if (canAdd && vm === 'active') {
-            btnAdd.classList.remove('hidden');
-            btnAdd.classList.add('flex');
-          } else {
-            btnAdd.classList.add('hidden');
-            btnAdd.classList.remove('flex');
-          }
-        }
-
-        this.renderTable(rows);
-
-        const dashView = document.getElementById('view-dashboard');
-        if (dashView && !dashView.classList.contains('hidden')) {
-          this.renderDashboard();
-        }
-
-        if (titleEl) titleEl.innerText = this.currentTable.replace(/_/g, ' ').toUpperCase();
-
+      if (s.type === 'LOOKUP' && s.lookup) {
+        html += `<select id="f-${f}" name="${f}" onchange="app.triggerLookup('${f}', this.value)" class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}"><option value="">-- PILIH --</option></select>`;
       } else {
-        console.error("Gagal memuat data:", d?.message);
-        alert("Gagal Sinkronisasi: " + (d?.message || "Koneksi terputus"));
+        const inputType = (s.type === 'NUMBER' || s.type === 'CURRENCY') ? 'number' : (s.type === 'DATE') ? 'date' : 'text';
+        html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" ${isLocked ? 'disabled' : ''} oninput="app.runLiveFormula()" class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">`;
       }
+      if (isLocked) html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${val}">`;
+      html += `</div>`;
+    }
+    container.innerHTML = html;
 
-    } catch (err) {
-      console.error("LoadResource Error:", err);
-      if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-      if (titleEl) titleEl.innerText = "CONNECTION ERROR";
+    // Populate Lookups
+    for (const f of fields) {
+      const s = this.schema[f];
+      if (s?.type === 'LOOKUP' && s.lookup) {
+        const currentVal = data ? data[f] : '';
+        await this.populateLookup(f, s.lookup.table, s.lookup.field, currentVal);
+        if (currentVal) await this.triggerLookup(f, currentVal);
+      }
+    }
+    this.runLiveFormula();
+  },
+
+  async populateLookup(fieldId, table, fieldName, currentVal) {
+    const select = document.getElementById(`f-${fieldId}`);
+    if (!select) return;
+    
+    // Jika Staff tidak punya akses ke tabel referensi, list akan jadi []
+    const list = this.resourceCache[table] || [];
+    
+    if (list.length === 0) {
+      console.warn(`[LOOKUP] Data referensi tabel '${table}' tidak tersedia untuk role ${this.role}`);
+    }
+
+    select.innerHTML = `<option value="">-- Pilih --</option>` + 
+      list.map(item => `<option value="${item[fieldName]}" ${item[fieldName] == currentVal ? 'selected' : ''}>${item[fieldName]}</option>`).join('');
+  },
+
+  triggerLookup(sourceField, value) {
+    Object.keys(this.schema).forEach(targetField => {
+      const s = this.schema[targetField];
+      if (s.type === 'AUTOFILL' && s.autoTrigger === sourceField) {
+        const tableData = this.resourceCache[s.autoTable] || [];
+        const match = tableData.find(item => String(item[this.schema[sourceField].lookup?.field || sourceField]) === String(value));
+        const el = document.getElementById(`f-${targetField}`);
+        const hiddenEl = document.getElementById(`f-${targetField}-hidden`);
+        if (match && el) {
+          const newVal = match[s.autoCol] || '';
+          el.value = newVal;
+          if (hiddenEl) hiddenEl.value = newVal;
+        }
+      }
+    });
+    this.runLiveFormula();
+  },
+
+  runLiveFormula() {
+    Object.keys(this.schema).forEach(f => {
+      const s = this.schema[f];
+      if (s.type === 'FORMULA' && s.formula) {
+        try {
+          const solved = s.formula.replace(/{(\w+)}/g, (m, key) => {
+            const el = document.getElementById(`f-${key}`) || document.getElementById(`f-${key}-hidden`);
+            return parseFloat(el?.value) || 0;
+          });
+          const result = new Function(`return ${solved}`)();
+          const target = document.getElementById(`f-${f}`);
+          const targetHidden = document.getElementById(`f-${f}-hidden`);
+          if (target) target.value = result;
+          if (targetHidden) targetHidden.value = result;
+        } catch (e) {}
+      }
+    });
+  },
+
+  closeForm() {
+    const modal = document.getElementById('f-modal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    this.editingId = null;
+  },
+
+    renderSidebar() {
+    const list = document.getElementById('resource-list');
+    const tools = document.getElementById('system-tools'); // Container Engineering Lab
+    
+    if (!list) return;
+
+    // Filter unik ID Tabel agar tidak double
+    const unique = [...new Map(this.allResources.map(item => [item.id, item])).values()];
+
+    // Render list tabel ke resource-list
+    list.innerHTML = unique.map(r => `
+      <button onclick="app.selectResource('${r.id}')" id="nav-${r.id}" 
+        class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-all text-left uppercase tracking-wider text-slate-400">
+        <i class="fa-solid fa-table text-[10px] opacity-40"></i> <span>${r.id}</span>
+      </button>
+    `).join('');
+
+    // 🔥 KONTROL TAMPILAN ENGINEERING LAB (ADMIN ONLY)
+    if (tools) {
+      if (this.role && String(this.role).toUpperCase() === 'ADMIN') {
+        tools.classList.remove('hidden');
+        console.log("[SIDEBAR] Engineering Lab Unlocked for Admin");
+      } else {
+        tools.classList.add('hidden');
+      }
     }
   },
 
+// 2. SELECT RESOURCE: Perpindahan antar tabel
+
+
+  // 3. UPDATE SIDEBAR UI: Logika pewarnaan tombol aktif
+  updateSidebarUI(id) {
+    // 1. SAPU BERSIH warna biru di semua tombol nav
+    document.querySelectorAll('nav button, .nav-btn').forEach(b => {
+      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+      b.classList.add('text-slate-400');
+    });
+
+    // 2. WARNAI YANG BARU: Hanya tombol yang aktif sekarang
+    const targetId = (id === 'dashboard') ? 'nav-dashboard' : `nav-${id}`;
+    const activeBtn = document.getElementById(targetId);
+    
+    if (activeBtn) {
+      activeBtn.classList.remove('text-slate-400');
+      activeBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+    }
+
+    // 3. UPDATE JUDUL HEADER
+    const titleEl = document.getElementById('cur-title');
+    if (titleEl) {
+      titleEl.innerText = id.replace(/_/g, ' ').toUpperCase();
+    }
+  },
+
+  // Fungsi sinkronisasi tambahan jika dibutuhkan oleh fungsi lain
+  syncSidebarUI(id) {
+    this.updateSidebarUI(id);
+  },
+
+      async selectResource(id) {
+    if (this.currentTable === id && this.currentView === 'data') return;
+
+    // 1. Matikan semua view (termasuk dashboard & crud)
+    if (typeof this.resetViews === 'function') this.resetViews();
+
+    // 2. Set State
+    this.currentTable = id;
+    this.currentView = 'data';
+
+    // 3. AKTIFKAN KEMBALI CONTAINER CRUD
+    const crudView = document.getElementById('view-crud');
+    const searchContainer = document.getElementById('search-container');
+
+    if (crudView) {
+      crudView.classList.remove('hidden'); 
+      crudView.style.visibility = 'visible'; 
+    }
+    if (searchContainer) searchContainer.classList.remove('hidden');
+
+    // 4. Update UI Sidebar (Warna Tombol & Judul)
+    this.updateSidebarUI(id);
+
+    // 5. Load Data dengan Proteksi Cache
+    if (this.resourceCache && this.resourceCache[id]) {
+      this.schema = (this.schemaCache && this.schemaCache[id]?.schema) || {};
+
+      // 🔥 PERBAIKAN: Gunakan app.renderTable dan cek ketersediaannya
+      // Ini memastikan jika file table.js belum siap, aplikasi tidak crash
+      if (typeof app.renderTable === 'function') {
+        app.renderTable(this.resourceCache[id]);
+      } else {
+        console.warn("Table module is still loading, retrying render...");
+        setTimeout(() => app.renderTable && app.renderTable(this.resourceCache[id]), 100);
+      }
+
+      this.loadResource(true); // Tetap refresh background
+    } else {
+      await this.loadResource(true);
+    }
+  },
 
 
 };
