@@ -1540,72 +1540,73 @@ sheet: (function() {
   //     if (titleEl) titleEl.innerText = "CONNECTION ERROR";
   //   }
   // },
-  async save(e) {
-    if (e) e.preventDefault();
-    
-    // 1. PROTEKSI: Pastikan fields tersedia
-    const mode = this.editingId ? 'edit' : 'add';
-    const fields = this.modes?.[mode]?.fields || Object.keys(this.schema).filter(k => !['id', 'created_at', 'created_by', 'deleted_at'].includes(k));
+/**
+ * SAVE FUNCTION - JURAGAN SAAS SHEET
+ * Support: Create & Update with Audit Logging
+ */
+async save() {
+  console.group("💾 FE_SAVE_REQUEST");
+  const form = document.getElementById('f-fields');
+  const inputs = form.querySelectorAll('input, select');
+  const data = {};
 
-    const data = {};
-    if (this.editingId) data.id = this.editingId;
+  // 1. Collect Data dari Form
+  inputs.forEach(el => {
+    if (el.name) data[el.name] = el.value;
+  });
 
-    // 2. Kumpulkan data dari Form
-    // Kita ambil dari input biasa DAN input hidden (untuk field yang di-lock/autofill)
-    fields.forEach(f => {
-      const el = document.getElementById(`f-${f}`) || document.getElementById(`f-${f}-hidden`);
-      if (el) {
-        let val = el.value;
-        const s = this.schema[f];
-        
-        // Konversi tipe data agar di Spreadsheet tidak jadi teks semua
-        if (s?.type === 'NUMBER' || s?.type === 'CURRENCY' || s?.type === 'FORMULA') {
-          val = parseFloat(val) || 0;
-        }
-        data[f] = val;
-      }
+  if (this.editingId) data.id = this.editingId;
+
+  const action = this.editingId ? 'update' : 'create';
+  
+  try {
+    const payload = {
+      action: action,
+      table: this.currentTable,
+      token: this.token,
+      ua: navigator.userAgent,
+      sheet: localStorage.getItem('sk_sheet'),
+      data: data
+    };
+
+    console.log("1. Action:", action.toUpperCase());
+    console.log("2. Payload to Send:", payload);
+
+    const response = await fetch(DYNAMIC_ENGINE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
     });
 
-    // 3. Validasi sederhana
-    const requiredMissing = fields.filter(f => this.schema[f]?.required && !data[f]);
-    if (requiredMissing.length > 0) {
-      alert(`Mohon lengkapi data: ${requiredMissing.map(f => this.schema[f].label || f).join(', ')}`);
-      return;
-    }
-
-    // 4. Kirim ke Backend
-    const btn = document.getElementById('btn-commit');
-    const originalText = btn.innerText;
-    btn.innerText = "SAVING...";
-    btn.disabled = true;
+    const resultText = await response.text();
+    console.log("3. Server Raw Response:", resultText);
 
     try {
-      const res = await fetch(DYNAMIC_ENGINE_URL, {
-        method: 'POST',
-        mode: 'no-cors', // Penting untuk Google Apps Script
-        body: JSON.stringify({
-          action: this.editingId ? 'update' : 'create',
-          table: this.currentTable,
-          token: this.token,
-          sheet: localStorage.getItem('sk_sheet'),
-          data: data
-        })
-      });
-
-      // Karena no-cors, kita tidak bisa baca response body secara detail
-      // Kita asumsikan berhasil jika tidak ada error network, lalu refresh data
-      // alert("Data berhasil dikirim!");
-      this.closeForm();
-      await this.loadResource(true); // Refresh tabel agar data baru muncul
-    } catch (err) {
-      console.error("Save Error:", err);
-      alert("Gagal menyimpan data. Cek koneksi atau izin akses.");
-    } finally {
-      btn.innerText = originalText;
-      btn.disabled = false;
+      const resultJson = JSON.parse(resultText);
+      if (resultJson.success) {
+        console.log("✅ SAVE_SUCCESS");
+        alert("Data berhasil disimpan!");
+        this.closeForm();
+        setTimeout(() => this.loadResource(true), 1000);
+      } else {
+        console.error("❌ BE_LOGIC_ERROR:", resultJson.message);
+        alert("Gagal: " + resultJson.message);
+      }
+    } catch (e) {
+      // Jika GAS Redirect (302), kita asumsikan sukses jika status 200
+      if (response.status === 200) {
+        alert("Data diproses (Check Sheet)!");
+        this.closeForm();
+        setTimeout(() => this.loadResource(true), 1500);
+      }
     }
-  },
-  
+
+  } catch (err) {
+    console.error("🔥 CRITICAL_SAVE_ERROR:", err);
+    alert("Koneksi Error saat menyimpan!");
+  }
+  console.groupEnd();
+},
 // async studioMigrate() {
 //   const btn = document.getElementById('btn-migrate');
 //   const tableName = document.getElementById('st-table-name').value;
@@ -1843,7 +1844,7 @@ studioAddField() {
       };
     });
 
-    console.log('[PERMISSION] Final Map:', this.permissions);
+    // console.log('[PERMISSION] Final Map:', this.permissions);
     return true;
   },
 
@@ -1882,8 +1883,8 @@ async get(params) {
       }).toString();
 
       // DEBUGGING: Cek di Console F12 apakah datanya sudah benar
-      console.log("Target Engine:", dynamicEngineUrl);
-      console.log("Payload GET:", q);
+      // console.log("Target Engine:", dynamicEngineUrl);
+      // console.log("Payload GET:", q);
 
       // 4. Eksekusi Fetch
       const res = await fetch(`${dynamicEngineUrl}?${q}`);
@@ -1945,8 +1946,8 @@ async post(arg1, arg2) {
       }
 
       // --- PERBAIKAN 2: Gunakan BASE_URL dinamis dari LocalStorage ---
-      // Pastikan di atas script, const BASE_URL = localStorage.getItem('sk_engine_url')
-      const res = await fetch(BASE_URL, {
+      // Pastikan di atas script, const BASE_URL = localStorage.getItem('sk_engine_url') 
+      const res = await fetch(DYNAMIC_ENGINE_URL, {
         method: 'POST',
         // 🔴 PERBAIKAN 3: Jangan gunakan 'no-cors' agar bisa baca res.json()
         body: JSON.stringify(finalPayload)
@@ -2088,111 +2089,113 @@ async post(arg1, arg2) {
    * LOAD RESOURCE - JURAGAN SAAS SHEET
    * Target: 1000 SA Users - Secure & Scalable CRUD
    */
-  async loadResource(forceRefresh = false) {
-    const vm = document.getElementById('view-mode')?.value || 'active';
-    const btnRefresh = document.getElementById('btn-refresh');
-    const btnAdd = document.getElementById('btn-add');
-    const titleEl = document.getElementById('cur-title');
+/**
+ * LOAD RESOURCE - JURAGAN SAAS SHEET
+ * Versi Full: Tanpa pemotongan, mendukung penuh autoTrigger & Formula
+ */
+async loadResource(forceRefresh = false) {
+  const vm = document.getElementById('view-mode')?.value || 'active';
+  const btnRefresh = document.getElementById('btn-refresh');
+  const btnAdd = document.getElementById('btn-add');
+  const titleEl = document.getElementById('cur-title');
 
-    if (btnRefresh) btnRefresh.classList.add('animate-spin');
-    if (titleEl) titleEl.innerText = "SYNCHRONIZING " + this.currentTable.toUpperCase() + "...";
+  // 1. UI FEEDBACK: START
+  if (btnRefresh) btnRefresh.classList.add('animate-spin');
+  if (titleEl) titleEl.innerText = "SYNCHRONIZING " + this.currentTable.toUpperCase() + "...";
 
-    if (forceRefresh) {
-      this.resourceCache[this.currentTable] = [];
-    }
+  if (forceRefresh) {
+    this.resourceCache[this.currentTable] = [];
+  }
 
-    try {
-      const d = await this.get({
-        action: 'read',
-        table: this.currentTable,
-        viewMode: vm,
-        _t: forceRefresh ? Date.now() : null
-      });
+  try {
+    // Memanggil fungsi app.get (Helper Fetch)
+    const d = await this.get({
+      action: 'read',
+      table: this.currentTable,
+      viewMode: vm,
+      _t: forceRefresh ? Date.now() : null
+    });
 
-      if (btnRefresh) btnRefresh.classList.remove('animate-spin');
+    if (btnRefresh) btnRefresh.classList.remove('animate-spin');
 
-      if (d && d.success) {
-        // --- 1. DEBUG RAW DATA DARI BACKEND ---
-        console.group(`DEBUG SCHEMA: ${this.currentTable}`);
-        console.log("Raw Schema from Backend:", d.schema);
-
-        // --- 2. PROSES TRANSFORMASI SCHEMA ---
-        const rawSchema = d.schema;
+    if (d && d.success) {
+      console.group(`🚀 DEBUG_LOAD_RESOURCE: ${this.currentTable}`);
+      
+      // --- 2. PENANGANAN SCHEMA (PATUH TOTAL) ---
+      // Jika BE sudah kirim Object {id: {...}, harga: {...}}, kita pakai langsung.
+      // Jika BE kirim Array (format lama), kita transformasikan.
+      
+      const rawSchema = d.schema;
+      
+      if (rawSchema && !Array.isArray(rawSchema) && typeof rawSchema === 'object') {
+        // Backend v44.3.x mengirimkan Object. Ini yang kita mau!
+        this.schema = rawSchema;
+        console.log("Schema received as Object (Native v44.3+):", this.schema);
+      } 
+      else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
+        // Fallback: Jika BE kirim Array [headers, configs]
+        console.log("Schema received as Array, transforming...");
+        const headers = rawSchema[0];
+        const configs = rawSchema[1];
         this.schema = {};
-
-        if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-          const headers = rawSchema[0]; // Baris 1: Header
-          const configs = rawSchema[1]; // Baris 2: Config JSON
-          
-          headers.forEach((h, index) => {
-            let config = configs[index];
-            
-            // Konversi String JSON menjadi Object
-            if (typeof config === 'string' && config.trim() !== "") {
-              try { 
-                config = JSON.parse(config); 
-              } catch(e) { 
-                console.warn(`Gagal parse JSON pada kolom [${h}]:`, config);
-                config = { label: h.replace(/_/g, ' ').toUpperCase() }; 
-              }
-            }
-            
-            // Simpan ke mapping final
-            this.schema[h] = (config && typeof config === 'object') ? config : { label: h.replace(/_/g, ' ').toUpperCase() };
-          });
-        } else {
-          console.warn("Format schema tidak dikenal atau hanya 1 baris. Menggunakan default.");
-          this.schema = rawSchema || {};
-        }
-
-        // --- 3. DEBUG HASIL AKHIR SCHEMA ---
-        console.log("Transformed Schema (Object Mapping):", this.schema);
-        console.table(this.schema); // Menampilkan dalam bentuk tabel di console agar enak dibaca
-        console.groupEnd();
-
-        // --- 4. SINKRONISASI MODES & DATA ---
-        this.modes = d.modes || { 
-          add: { can: true }, 
-          edit: { can: true }, 
-          delete: { can: true },
-          browse: { can: true } 
-        };
-
-        const rows = d.rows || [];
-        this.resourceCache[this.currentTable] = rows;
-
-        // UI Updates
-        if (btnAdd) {
-          const canAdd = (this.modes?.add?.can === true) || (this.modes?.can_add === true);
-          if (canAdd && vm === 'active') {
-            btnAdd.classList.remove('hidden');
-            btnAdd.classList.add('flex');
-          } else {
-            btnAdd.classList.add('hidden');
-            btnAdd.classList.remove('flex');
+        
+        headers.forEach((h, index) => {
+          let config = configs[index];
+          if (typeof config === 'string' && config.trim() !== "") {
+            try { config = JSON.parse(config); } catch(e) { config = {}; }
           }
-        }
-
-        this.renderTable(rows);
-
-        const dashView = document.getElementById('view-dashboard');
-        if (dashView && !dashView.classList.contains('hidden')) {
-          this.renderDashboard();
-        }
-
-        if (titleEl) titleEl.innerText = this.currentTable.replace(/_/g, ' ').toUpperCase();
-
-      } else {
-        console.error("Gagal memuat data:", d?.message);
-        alert("Gagal Sinkronisasi: " + (d?.message || "Koneksi terputus"));
+          this.schema[h] = { ...config, name: h, headerIdx: index };
+        });
       }
 
-    } catch (err) {
-      console.error("LoadResource Error:", err);
-      if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-      if (titleEl) titleEl.innerText = "CONNECTION ERROR";
+      // Verifikasi autoTrigger agar Juragan tenang
+      console.table(this.schema); 
+      console.groupEnd();
+
+      // --- 3. SINKRONISASI MODES & DATA ---
+      this.modes = d.modes || { 
+        add: { can: true }, 
+        edit: { can: true }, 
+        delete: { can: true },
+        browse: { can: true } 
+      };
+
+      // Pastikan data rows tersimpan di cache untuk LOOKUP/AUTOFILL
+      const rows = d.rows || [];
+      this.resourceCache[this.currentTable] = rows;
+
+      // --- 4. UI UPDATES (ADD BUTTON LOGIC) ---
+      if (btnAdd) {
+        const canAdd = (this.modes?.add?.can === true) || (this.modes?.can_add === true);
+        if (canAdd && vm === 'active') {
+          btnAdd.classList.replace('hidden', 'flex');
+        } else {
+          btnAdd.classList.replace('flex', 'hidden');
+        }
+      }
+
+      // --- 5. RENDER CORE ---
+      this.renderTable(rows);
+
+      // Render Dashboard jika sedang aktif
+      const dashView = document.getElementById('view-dashboard');
+      if (dashView && !dashView.classList.contains('hidden')) {
+        this.renderDashboard();
+      }
+
+      if (titleEl) titleEl.innerText = this.currentTable.replace(/_/g, ' ').toUpperCase();
+
+    } else {
+      console.error("Gagal memuat data:", d?.message);
+      alert("Gagal Sinkronisasi: " + (d?.message || "Koneksi terputus"));
     }
-  },
+
+  } catch (err) {
+    console.error("🔥 LoadResource Critical Error:", err);
+    if (btnRefresh) btnRefresh.classList.remove('animate-spin');
+    if (titleEl) titleEl.innerText = "CONNECTION ERROR";
+  }
+},
 
 
 

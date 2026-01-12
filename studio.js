@@ -236,7 +236,7 @@ Object.assign(app, {
     btn.disabled = true;
 
     try {
-      await fetch(BASE_APP_URL, {
+      await fetch(DYNAMIC_ENGINE_URL, {
         method: 'POST',
         mode: 'no-cors', 
         body: JSON.stringify({

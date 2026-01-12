@@ -196,33 +196,31 @@ runLiveFormula() {
     this.editingId = null;
   },
 
-  async remove(tableId, rowId) {
-    if (!confirm('Hapus data ini?')) return;
-    const titleEl = document.getElementById('cur-title');
-    const originalTitle = titleEl ? titleEl.innerText : "SYSTEM READY";
-    try {
-      if (titleEl) titleEl.innerText = "DELETING...";
-      const payload = {
-        action: 'delete',
-        table: tableId,
-        token: this.token,
-        sheet: localStorage.getItem('sk_sheet'),
-        data: { id: rowId }
-      };
-      await fetch(DYNAMIC_ENGINE_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify(payload)
-      });
-      setTimeout(async () => {
-        await this.loadResource(true);
-        if (titleEl) titleEl.innerText = originalTitle;
-        alert("Berhasil dihapus!");
-      }, 1000);
-    } catch (err) {
-      console.error("Remove Error:", err);
-      alert("Gagal menghapus data.");
-      if (titleEl) titleEl.innerText = originalTitle;
-    }
-  },
+ async remove(tableId, rowId) {
+  if (!confirm('Hapus data ini?')) return;
+  // ... (loading state)
+  try {
+    const payload = {
+      action: 'delete',
+      table: tableId,
+      token: this.token,
+      ua: navigator.userAgent, // Tambahkan UA agar verifyToken BE tidak reject
+      sheet: localStorage.getItem('sk_sheet'),
+      data: { id: rowId }
+    };
+
+    // GUNAKAN INI: Tanpa no-cors, dengan Content-Type plain/text agar tidak trigger pre-flight
+    await fetch(DYNAMIC_ENGINE_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload) 
+    });
+
+    // Re-sync data
+    setTimeout(() => this.loadResource(true), 1500);
+  } catch (err) {
+    alert("Koneksi Error");
+  }
+}
+
+
 });
