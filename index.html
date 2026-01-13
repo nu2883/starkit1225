@@ -527,7 +527,7 @@
     <script src="studio.js"></script>
     <script src="table.js"></script>
 
-    <script>
+    <!-- <script>
   window.addEventListener('load', () => {
     if (typeof app !== 'undefined' && app.init) {
       app.init();
@@ -535,7 +535,7 @@
       console.error("Critical: script.js gagal dimuat atau objek 'app' tidak ditemukan!");
     }
   });
-</script>
+</script> -->
 
     <script>
       // Mobile sidebar functions - wait for DOM to be ready
@@ -642,15 +642,7 @@
         }, 100);
       }
 
-      // Ensure app.init is called after all scripts are loaded
-      // window.addEventListener("load", () => {
-      //   console.log("Window loaded");
-      //   if (window.app && typeof window.app.init === "function") {
-      //     window.app.init();
-      //   } else {
-      //     console.error("app.init tidak ditemukan!");
-      //   }
-      // });
+
     </script>
   </body>
 </html>

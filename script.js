@@ -1,8 +1,3 @@
-
-// const BASE_URL = 'https://script.google.com/macros/s/AKfycbYycnldXTaimSg8NZ5dbCk-Xn4sqtQXho1Hq0S0Au-KuoFhsEBiXsWqTeTryOBhRsU/exec';
-
-// 'https://script.google.com/macros/s/AKfycbxh1foEg_C7IlblKyZC-o4MtQblzFplUz6_CzZijJtk-cBE91oY-hS0gGJ8eK0wW-smjA/exec'
-
 // 1. Ambil dari storage
 const DYNAMIC_ENGINE_URL = localStorage.getItem('sk_engine_url');
 const DYNAMIC_SHEET_ID   = localStorage.getItem('sk_sheet');
@@ -213,50 +208,7 @@ const app = {
     }
   },
 
-  // async studioMigrate() {
-  //   const btn = document.getElementById('btn-migrate');
-  //   const tableName = document.getElementById('st-table-name').value;
-  //   const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
-  //   const fields = [];
-  //   if(!tableName) return alert("Nama Tabel Wajib!");
 
-  //   fieldNodes.forEach(n => {
-  //     const colName = n.querySelector('.st-name').value;
-  //     fields.push({ 
-  //       name: colName, 
-  //       label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
-  //       type: n.querySelector('.st-type').value,
-  //       show: n.querySelector('.st-show').checked,
-  //       required: n.querySelector('.st-req').checked,
-  //       disabled: n.querySelector('.st-disabled').checked,
-  //       formula: n.querySelector('.st-formula').value || null,
-  //       relTable: n.querySelector('.st-rel-table')?.value || n.querySelector('.st-rel-table-auto')?.value || '',
-  //       relField: n.querySelector('.st-rel-field')?.value || '',
-  //       trigger: n.querySelector('.st-trigger')?.value || '',
-  //       lookupKey: n.querySelector('.st-lookup-key')?.value || ''
-  //     });
-  //   });
-
-  //   btn.innerText = "MIGRATING...";
-  //   const res = await this.post('migrate', { tableName, fields });
-  //   if(res.success) location.reload(); else alert(res.message);
-  // }
-
-/**
- * MIGRATION ENGINE - STARKIT VOYAGER
- * Menggunakan data eksisting di localStorage tanpa mengubah struktur
- */
-/**
- * MIGRATION ENGINE - STARKIT VOYAGER
- * Sinkronisasi dengan BE v39.2.1 (Key: p.sheet)
- */
-/**
- * MIGRATION ENGINE - STARKIT VOYAGER
- * Menggunakan BASE_APP_URL dari auth untuk menghindari hardcode.
- * Sinkron dengan BE v39.2.1 (Juragan SaaS Sheet)
- */
-
-  // =============================
 
   renderSchemaData() {
     const container = document.getElementById('schema-content-area');
@@ -738,34 +690,7 @@ const app = {
     container.innerHTML = html;
   },
 
-  // async get(params) {
-  //   try {
-  //     // Gunakan BASE_URL jika this.apiUrl belum siap
-  //     const targetUrl = this.apiUrl || BASE_URL;
 
-  //     if (!targetUrl || targetUrl === '') {
-  //       throw new Error("Endpoint URL is totally missing!");
-  //     }
-
-  //     const url = new URL(targetUrl);
-
-  //     // Auto-inject token jika tersedia
-  //     if (this.token) url.searchParams.append('token', this.token);
-
-  //     // Inject params lainnya
-  //     Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-
-  //     const response = await fetch(url);
-  //     if (!response.ok) throw new Error("Network response was not ok");
-
-  //     const result = await response.json();
-  //     console.log("📥 Cloud Data Success:", result);
-  //     return result;
-  //   } catch (error) {
-  //     console.error("❌ API Error Detail:", error.message);
-  //     return { success: false, message: error.message };
-  //   }
-  // },
 
   openDashboardBuilder() {
     this.resetViews();
@@ -1423,127 +1348,6 @@ sheet: (function() {
       })(),
 
 
-/**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Fungsi untuk mengambil data dan menyusun Schema agar Form menjadi Pintar.
-   */
-/**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Fungsi untuk mengambil data dan menyusun Schema agar Form menjadi Pintar.
-   */
-/**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Target: 1000 SA Users - Secure & Scalable CRUD
-   */
-  // async loadResource(forceRefresh = false) {
-  //   const vm = document.getElementById('view-mode')?.value || 'active';
-  //   const btnRefresh = document.getElementById('btn-refresh');
-  //   const btnAdd = document.getElementById('btn-add');
-  //   const titleEl = document.getElementById('cur-title');
-
-  //   if (btnRefresh) btnRefresh.classList.add('animate-spin');
-  //   if (titleEl) titleEl.innerText = "SYNCHRONIZING " + this.currentTable.toUpperCase() + "...";
-
-  //   if (forceRefresh) {
-  //     this.resourceCache[this.currentTable] = [];
-  //   }
-
-  //   try {
-  //     const d = await this.get({
-  //       action: 'read',
-  //       table: this.currentTable,
-  //       viewMode: vm,
-  //       _t: forceRefresh ? Date.now() : null
-  //     });
-
-  //     if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-
-  //     if (d && d.success) {
-  //       // --- 1. DEBUG RAW DATA DARI BACKEND ---
-  //       console.group(`DEBUG SCHEMA: ${this.currentTable}`);
-  //       console.log("Raw Schema from Backend:", d.schema);
-
-  //       // --- 2. PROSES TRANSFORMASI SCHEMA ---
-  //       const rawSchema = d.schema;
-  //       this.schema = {};
-
-  //       if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-  //         const headers = rawSchema[0]; // Baris 1: Header
-  //         const configs = rawSchema[1]; // Baris 2: Config JSON
-          
-  //         headers.forEach((h, index) => {
-  //           let config = configs[index];
-            
-  //           // Konversi String JSON menjadi Object
-  //           if (typeof config === 'string' && config.trim() !== "") {
-  //             try { 
-  //               config = JSON.parse(config); 
-  //             } catch(e) { 
-  //               console.warn(`Gagal parse JSON pada kolom [${h}]:`, config);
-  //               config = { label: h.replace(/_/g, ' ').toUpperCase() }; 
-  //             }
-  //           }
-            
-  //           // Simpan ke mapping final
-  //           this.schema[h] = (config && typeof config === 'object') ? config : { label: h.replace(/_/g, ' ').toUpperCase() };
-  //         });
-  //       } else {
-  //         console.warn("Format schema tidak dikenal atau hanya 1 baris. Menggunakan default.");
-  //         this.schema = rawSchema || {};
-  //       }
-
-  //       // --- 3. DEBUG HASIL AKHIR SCHEMA ---
-  //       console.log("Transformed Schema (Object Mapping):", this.schema);
-  //       console.table(this.schema); // Menampilkan dalam bentuk tabel di console agar enak dibaca
-  //       console.groupEnd();
-
-  //       // --- 4. SINKRONISASI MODES & DATA ---
-  //       this.modes = d.modes || { 
-  //         add: { can: true }, 
-  //         edit: { can: true }, 
-  //         delete: { can: true },
-  //         browse: { can: true } 
-  //       };
-
-  //       const rows = d.rows || [];
-  //       this.resourceCache[this.currentTable] = rows;
-
-  //       // UI Updates
-  //       if (btnAdd) {
-  //         const canAdd = (this.modes?.add?.can === true) || (this.modes?.can_add === true);
-  //         if (canAdd && vm === 'active') {
-  //           btnAdd.classList.remove('hidden');
-  //           btnAdd.classList.add('flex');
-  //         } else {
-  //           btnAdd.classList.add('hidden');
-  //           btnAdd.classList.remove('flex');
-  //         }
-  //       }
-
-  //       this.renderTable(rows);
-
-  //       const dashView = document.getElementById('view-dashboard');
-  //       if (dashView && !dashView.classList.contains('hidden')) {
-  //         this.renderDashboard();
-  //       }
-
-  //       if (titleEl) titleEl.innerText = this.currentTable.replace(/_/g, ' ').toUpperCase();
-
-  //     } else {
-  //       console.error("Gagal memuat data:", d?.message);
-  //       alert("Gagal Sinkronisasi: " + (d?.message || "Koneksi terputus"));
-  //     }
-
-  //   } catch (err) {
-  //     console.error("LoadResource Error:", err);
-  //     if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-  //     if (titleEl) titleEl.innerText = "CONNECTION ERROR";
-  //   }
-  // },
-/**
- * SAVE FUNCTION - JURAGAN SAAS SHEET
- * Support: Create & Update with Audit Logging
- */
 async save() {
   console.group("💾 FE_SAVE_REQUEST");
   const form = document.getElementById('f-fields');
@@ -1607,84 +1411,7 @@ async save() {
   }
   console.groupEnd();
 },
-// async studioMigrate() {
-//   const btn = document.getElementById('btn-migrate');
-//   const tableName = document.getElementById('st-table-name').value;
-//   const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
-//   const fields = [];
-  
-//   if (!tableName) return alert("Nama Tabel Wajib!");
 
-//   fieldNodes.forEach(n => {
-//     const colName = n.querySelector('.st-name').value;
-//     const type = n.querySelector('.st-type').value;
-
-//     // Ambil nilai relasi (Gaya stabil juragan)
-//     // Gunakan querySelector yang langsung ke class agar akurat
-//     const rTable = n.querySelector('.st-rel-table')?.value || '';
-//     const rField = n.querySelector('.st-rel-field')?.value || '';
-
-//     fields.push({
-//       name: colName,
-//       label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
-//       type: type,
-//       show: n.querySelector('.st-show').checked,
-//       required: n.querySelector('.st-req').checked,
-//       disabled: n.querySelector('.st-disabled').checked,
-//       formula: n.querySelector('.st-formula').value || null,
-
-//       // 🚀 FIX LOOKUP: Kita buat objek lookup jika type-nya LOOKUP
-//       // Kita kirim string kosong jika input belum diisi, agar tidak langsung null total
-//       lookup: (type === 'LOOKUP') ? {
-//         table: rTable,
-//         field: rField
-//       } : null,
-
-//       // --- INFO 3 SAKTI UNTUK AUTOFILL ---
-//       autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value || '' : '',
-//       autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value || '' : '',
-//       autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value || '' : ''
-//     });
-//   });
-
-//   // Proteksi UI
-//   const originalText = btn.innerText;
-//   btn.innerText = "MIGRATING...";
-//   btn.disabled = true;
-
-//   try {
-//     // Gunakan fetch mode no-cors agar stabil tembus ke GAS
-//     await fetch(BASE_APP_URL, {
-//       method: 'POST',
-//       mode: 'no-cors', 
-//       headers: { 'Content-Type': 'text/plain' },
-//       body: JSON.stringify({
-//         action: 'migrate',
-//         token: this.token || localStorage.getItem('sk_token'),
-//         sheet: localStorage.getItem('sk_sheet'),
-//         data: { 
-//           tableName: tableName, 
-//           fields: fields 
-//         }
-//       })
-//     });
-
-//     // Beri feedback ke user
-//     alert("🚀 Instruksi Migrasi Tabel '" + tableName + "' Berhasil Dikirim!");
-    
-//     setTimeout(() => {
-//       location.reload();
-//     }, 1000);
-
-//   } catch (error) {
-//     console.error("Migration Error:", error);
-//     alert("Terjadi kesalahan jaringan.");
-//     btn.innerText = originalText;
-//     btn.disabled = false;
-//   }
-//   },
-
-    // --- STUDIO SECTION ---
   
   
   openAppStudio() {
@@ -1963,32 +1690,6 @@ async post(arg1, arg2) {
 
 
 
-
-  /**
-   * LOAD RESOURCE - Fungsi yang dipanggil saat ganti tabel
-   */
-  // async loadResource(forceRefresh = false) {
-  //   const tableId = this.currentTable;
-  //   if (!tableId) return;
-
-  //   // Ambil metadata dari cache
-  //   const cache = this.schemaCache[tableId];
-  //   if (!cache) return;
-
-  //   this.schema = cache.schema;
-  //   this.modes = cache.modes; // Di sini modes (boolean) masuk ke table.js
-
-  //   const rows = forceRefresh ? 
-  //     (await this.get({ action: 'read', table: tableId })).rows : 
-  //     this.resourceCache[tableId];
-
-  //   this.renderTable(rows);
-    
-  //   // Update Title UI
-  //   const titleEl = document.getElementById('cur-title');
-  //   if (titleEl) titleEl.innerText = tableId.replace(/_/g, ' ').toUpperCase();
-  // },
-
   async init() {
     if (!this.token) return;
 
@@ -2054,45 +1755,13 @@ async post(arg1, arg2) {
         console.error(`Error loading ${res.id}`, e);
       }
     }));
-
+    
+    this.openDashboard();
     this.renderSidebar();
     if (titleEl) titleEl.innerText = "SYSTEM READY";
-    this.openDashboard();
   },
 
-  // WAJIB: Pastikan loadResource mengambil data dari schemaCache!
-  // async loadResource(forceRefresh = false) {
-  //   const tableId = this.currentTable;
-  //   if (!tableId) return;
 
-  //   const cache = this.schemaCache[tableId];
-  //   if (!cache) return;
-
-  //   // INI KUNCINYA: Memindahkan cache ke variabel aktif app
-  //   this.schema = cache.schema;
-  //   this.modes = cache.modes; 
-    
-  //   // DEBUG 3: Cek apakah this.modes sudah terisi sebelum render
-  //   // console.log("DEBUG 3 - Current app.modes before render:", this.modes);
-
-  //   const rows = forceRefresh ? 
-  //     (await this.get({ action: 'read', table: tableId })).rows : 
-  //     this.resourceCache[tableId];
-
-  //   this.renderTable(rows);
-    
-  //   const titleEl = document.getElementById('cur-title');
-  //   if (titleEl) titleEl.innerText = tableId.replace(/_/g, ' ').toUpperCase();
-  // },
-
-  /**
-   * LOAD RESOURCE - JURAGAN SAAS SHEET
-   * Target: 1000 SA Users - Secure & Scalable CRUD
-   */
-/**
- * LOAD RESOURCE - JURAGAN SAAS SHEET
- * Versi Full: Tanpa pemotongan, mendukung penuh autoTrigger & Formula
- */
 async loadResource(forceRefresh = false) {
   const vm = document.getElementById('view-mode')?.value || 'active';
   const btnRefresh = document.getElementById('btn-refresh');
@@ -2119,7 +1788,7 @@ async loadResource(forceRefresh = false) {
     if (btnRefresh) btnRefresh.classList.remove('animate-spin');
 
     if (d && d.success) {
-      console.group(`🚀 DEBUG_LOAD_RESOURCE: ${this.currentTable}`);
+      // console.group(`🚀 DEBUG_LOAD_RESOURCE: ${this.currentTable}`);
       
       // --- 2. PENANGANAN SCHEMA (PATUH TOTAL) ---
       // Jika BE sudah kirim Object {id: {...}, harga: {...}}, kita pakai langsung.

@@ -1,6 +1,7 @@
 /**
  * STUDIO MODULE - EXTENSION FOR APP CLASS
  * Tetap menggunakan namespace 'app' agar HTML tidak berubah
+ * Updated: 2026-01-13 (Fix Lookup Sync & Migration UA)
  */
 
 Object.assign(app, {
@@ -174,11 +175,13 @@ Object.assign(app, {
       triggerSelect.value = currentVal;
     }
 
-    if (tableSelect && tableSelect.options.length <= 1) { 
-      // Hanya isi jika masih kosong (length 1 adalah baris "-- Pilih Tabel --")
+    if (tableSelect) { 
+      // Ambil data dari app.resources (hasil listResources di BE v44.3.3)
       const resources = this.resources || this.allResources || [];
+      const currentVal = tableSelect.value;
       tableSelect.innerHTML = '<option value="">-- Pilih Tabel --</option>' +
-        resources.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join('');
+        resources.map(r => `<option value="${r.id}">${r.name || r.id}</option>`).join('');
+      tableSelect.value = currentVal;
     }
   },
 
@@ -236,21 +239,28 @@ Object.assign(app, {
     btn.disabled = true;
 
     try {
-      await fetch(DYNAMIC_ENGINE_URL, {
+      // PERBAIKAN: Gunakan fetch standar tanpa no-cors dan kirimkan UA
+      const response = await fetch(DYNAMIC_ENGINE_URL, {
         method: 'POST',
-        mode: 'no-cors', 
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'migrate',
           token: this.token || localStorage.getItem('sk_token'),
           sheet: localStorage.getItem('sk_sheet'),
+          ua: navigator.userAgent, // WAJIB untuk BE v44.3.3
           data: { tableName, fields }
         })
       });
 
-      alert("🚀 Sukses! Tabel '" + tableName + "' telah lahir.");
-      setTimeout(() => { location.reload(); }, 1000);
+      const res = await response.json();
+      if (res.success) {
+        alert("🚀 Sukses! Tabel '" + tableName + "' telah lahir.");
+        setTimeout(() => { location.reload(); }, 1000);
+      } else {
+        throw new Error(res.message);
+      }
     } catch (error) {
-      alert("Gagal koneksi!");
+      alert("Gagal: " + error.message);
       btn.innerText = "🚀 BIRTH NEW TABLE";
       btn.disabled = false;
     }
@@ -259,16 +269,18 @@ Object.assign(app, {
   syncStudioOptions(id) {
     const resources = this.resources || this.allResources || [];
     
-    // 1. Update dropdown Relasi (LOOKUP) hanya jika dropdown-nya masih kosong
+    // 1. Update dropdown Relasi (LOOKUP)
     if (id) {
       const relSelect = document.querySelector(`#st-f-${id} .st-rel-table`);
-      if (relSelect && relSelect.options.length <= 1) {
+      if (relSelect) {
+        const currentVal = relSelect.value;
         relSelect.innerHTML = '<option value="" disabled selected>-- Pilih Tabel --</option>' +
-          resources.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join('');
+          resources.map(r => `<option value="${r.id}">${r.name || r.id}</option>`).join('');
+        if(currentVal) relSelect.value = currentVal;
       }
     }
 
-    // 2. Update daftar Trigger (karena nama kolom bisa berubah)
+    // 2. Update daftar Trigger
     const triggers = document.querySelectorAll('.st-auto-trigger');
     triggers.forEach(sel => {
         const parentRow = sel.closest('div[id^="st-f-"]');
