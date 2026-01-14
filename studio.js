@@ -1,7 +1,12 @@
 /**
- * STUDIO MODULE - EXTENSION FOR APP CLASS
- * Tetap menggunakan namespace 'app' agar HTML tidak berubah
- * Updated: 2026-01-13 (Fix Lookup Sync & Migration UA)
+ * ============================================================
+ * STUDIO MODULE - JURAGAN SAAS SHEET
+ * ============================================================
+ * Version: 10.1 (Explicit Lookup Intent Edition)
+ * Target: 1000 SA Users (Secure & Scalable)
+ * Features: Reference Mode for Lookup, Autofill Sync, Schema Migration.
+ * Principles: Explicit Intent, Secure by Design, Zero-Side-Channel.
+ * ============================================================
  */
 
 Object.assign(app, {
@@ -43,6 +48,7 @@ Object.assign(app, {
 
     relUI.classList.add('hidden');
 
+    // Logic: Autofill & Formula wajib Locked/Disabled secara default
     if (type === 'AUTOFILL' || type === 'FORMULA') {
       if (lockCheckbox) lockCheckbox.checked = true;
     }
@@ -121,6 +127,12 @@ Object.assign(app, {
                 <option value="" disabled selected>-- Pilih Kolom --</option>
               </select>
             </div>
+            <div class="col-span-2 pt-2 border-t border-blue-200">
+              <label class="flex items-center gap-2 text-[9px] font-black cursor-pointer text-indigo-600">
+                <input type="checkbox" class="st-lookup-ref w-4 h-4 rounded shadow-sm" checked>
+                <span class="uppercase">Lookup sebagai Referensi (Read-Only)</span>
+              </label>
+            </div>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
@@ -162,7 +174,6 @@ Object.assign(app, {
     const tableSelect = row.querySelector('.st-auto-table');
 
     if (triggerSelect) {
-      // Simpan nilai lama agar tidak hilang saat sync
       const currentVal = triggerSelect.value;
       const currentFields = Array.from(document.querySelectorAll('.st-name'))
         .map(input => input.value.replace(/\s+/g, '').toLowerCase()) 
@@ -170,13 +181,10 @@ Object.assign(app, {
 
       triggerSelect.innerHTML = '<option value="">-- Pilih Trigger --</option>' +
         currentFields.map(f => `<option value="${f}">${f.toUpperCase()}</option>`).join('');
-      
-      // Kembalikan nilai jika masih ada di daftar baru
       triggerSelect.value = currentVal;
     }
 
     if (tableSelect) { 
-      // Ambil data dari app.resources (hasil listResources di BE v44.3.3)
       const resources = this.resources || this.allResources || [];
       const currentVal = tableSelect.value;
       tableSelect.innerHTML = '<option value="">-- Pilih Tabel --</option>' +
@@ -202,6 +210,7 @@ Object.assign(app, {
 
       const rTable = n.querySelector('.st-rel-table')?.value || '';
       const rField = n.querySelector('.st-rel-field')?.value || '';
+      const lookupModeCheckbox = n.querySelector('.st-lookup-ref');
 
       if (type === 'LOOKUP' && (!rTable || !rField)) {
         alert(`Kolom "${colName}" LOOKUP belum lengkap!`);
@@ -218,6 +227,7 @@ Object.assign(app, {
         }
       }
 
+      // PERBAIKAN: MIGRATION DENGAN NIAT EKSPLISIT (LOOKUP MODE)
       fields.push({
         name: colName,
         label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
@@ -226,7 +236,13 @@ Object.assign(app, {
         required: n.querySelector('.st-req').checked,
         disabled: n.querySelector('.st-disabled').checked,
         formula: n.querySelector('.st-formula').value || null,
-        lookup: (type === 'LOOKUP') ? { table: rTable, field: rField } : null,
+        
+        lookup: (type === 'LOOKUP') ? { 
+          table: rTable, 
+          field: rField,
+          mode: lookupModeCheckbox?.checked ? 'reference' : 'browse'
+        } : null,
+
         autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value : '',
         autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value : '',
         autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value : ''
@@ -239,7 +255,6 @@ Object.assign(app, {
     btn.disabled = true;
 
     try {
-      // PERBAIKAN: Gunakan fetch standar tanpa no-cors dan kirimkan UA
       const response = await fetch(DYNAMIC_ENGINE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -247,7 +262,7 @@ Object.assign(app, {
           action: 'migrate',
           token: this.token || localStorage.getItem('sk_token'),
           sheet: localStorage.getItem('sk_sheet'),
-          ua: navigator.userAgent, // WAJIB untuk BE v44.3.3
+          ua: navigator.userAgent, 
           data: { tableName, fields }
         })
       });
@@ -269,7 +284,6 @@ Object.assign(app, {
   syncStudioOptions(id) {
     const resources = this.resources || this.allResources || [];
     
-    // 1. Update dropdown Relasi (LOOKUP)
     if (id) {
       const relSelect = document.querySelector(`#st-f-${id} .st-rel-table`);
       if (relSelect) {
@@ -280,7 +294,6 @@ Object.assign(app, {
       }
     }
 
-    // 2. Update daftar Trigger
     const triggers = document.querySelectorAll('.st-auto-trigger');
     triggers.forEach(sel => {
         const parentRow = sel.closest('div[id^="st-f-"]');

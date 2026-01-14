@@ -2,10 +2,11 @@
  * ============================================================
  * TABLE & FORM MODULE - JURAGAN SAAS SHEET
  * ============================================================
- * Version: 10.0 (Final Master Plan Edition)
+ * Version: 10.1 (Explicit Lookup Intent Edition)
  * Target: 1000 SA Users (Secure, Scalable, Stable)
- * Features: PerPage Control, Kabataku Math, XSS Shield, Debounce Search.
- * Principles: Zero-Eval, Data-Attribute Security, Optimistic UI.
+ * Features: Reference Mode Support, PerPage Control, Kabataku Math.
+ * Principles: Explicit Intent Compliance, Zero-Trust FE, XSS Shield.
+ * ============================================================
  */
 
 Object.assign(app, {
@@ -139,7 +140,6 @@ Object.assign(app, {
     const isFirst = currentPage === 1;
     const isLast = currentPage === totalPages;
 
-    // Logic Page Numbers (Window of 5)
     let pageNumbers = '';
     const range = 2;
     for (let i = Math.max(1, currentPage - range); i <= Math.min(totalPages, currentPage + range); i++) {
@@ -150,11 +150,10 @@ Object.assign(app, {
         </button>`;
     }
 
-    const perPageOptions = [10, 25, 50, 100, 250, 500, 1000];
+    const perPageOptions = [5, 10, 25, 50, 100, 250, 500, 1000];
 
     container.innerHTML = `
       <div class="flex flex-col lg:flex-row items-center justify-between gap-6 px-6 py-4 bg-white border border-slate-100 rounded-3xl shadow-sm mt-6">
-        
         <div class="flex items-center gap-6">
           <div class="flex flex-col border-r border-slate-100 pr-6 text-left">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Show Rows</span>
@@ -162,7 +161,6 @@ Object.assign(app, {
               ${perPageOptions.map(opt => `<option value="${opt}" ${perPage == opt ? 'selected' : ''}>${opt} per page</option>`).join('')}
             </select>
           </div>
-          
           <div class="flex flex-col text-left">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Data Statistics</span>
             <span class="text-sm text-slate-600 font-bold">
@@ -172,14 +170,11 @@ Object.assign(app, {
             </span>
           </div>
         </div>
-
         <div class="flex items-center gap-1">
           <button ${isFirst ? 'disabled' : ''} onclick="app.gotoPage(1)" class="p-2 w-10 h-10 flex items-center justify-center rounded-xl border border-slate-100 text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 transition-all">
             <i class="fa-solid fa-angles-left text-[10px]"></i>
           </button>
-          <div class="flex gap-1">
-            ${pageNumbers}
-          </div>
+          <div class="flex gap-1">${pageNumbers}</div>
           <button ${isLast ? 'disabled' : ''} onclick="app.gotoPage(${totalPages})" class="p-2 w-10 h-10 flex items-center justify-center rounded-xl border border-slate-100 text-slate-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-30 transition-all">
             <i class="fa-solid fa-angles-right text-[10px]"></i>
           </button>
@@ -209,10 +204,10 @@ Object.assign(app, {
       );
       this.pagination.currentPage = 1;
       this.renderTable(filtered);
-    }, 300); // 300ms Debounce agar hemat resource
+    }, 300);
   },
 
-  // --- FORM GENERATOR ---
+// --- FORM GENERATOR (FIXED REQUIRED ATTRIBUTE) ---
   async openForm(data = null) {
     this.editingId = data ? data.id : null;
     const modal = document.getElementById('f-modal');
@@ -227,22 +222,38 @@ Object.assign(app, {
 
     let html = '';
     for (const f of fields) {
-      const s = (this.schema && this.schema[f]) ? this.schema[f] : { type: 'TEXT', label: f.replace(/_/g, ' ').toUpperCase() };
+      const s = (this.schema && this.schema[f]) ? this.schema[f] : { type: 'TEXT', label: f.replace(/_/g, ' ').toUpperCase(), required: false };
       if (s.hidden) continue;
 
       const val = data ? (data[f] || '') : '';
       const isLocked = (String(s.disabled).toLowerCase() === 'true') || (s.type === 'AUTOFILL') || (s.type === 'FORMULA');
+      const isRequired = s.required === true; // Kunci Validasi
       const lockClass = isLocked ? 'bg-slate-100 text-slate-400 border-dashed' : 'bg-slate-50 text-slate-700';
 
+      // Tambahkan Visual Indicator (Bintang Merah) jika Required
+      const labelHtml = this.escapeHTML(s.label || f.replace(/_/g, ' '));
+      const requiredMarker = isRequired ? '<span class="text-red-500 ml-1">*</span>' : '';
+
       html += `<div class="mb-4 text-left">
-        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest text-left">${this.escapeHTML(s.label || f.replace(/_/g, ' '))}</label>`;
+        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest text-left">
+          ${labelHtml}${requiredMarker}
+        </label>`;
 
       if (s.type === 'LOOKUP' && s.lookup) {
-        html += `<select id="f-${f}" name="${f}" onchange="app.triggerLookup('${f}', this.value)" class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none bg-slate-50"></select>`;
+        // Tambahkan atribut required di sini
+        html += `<select id="f-${f}" name="${f}" ${isRequired ? 'required' :悬} onchange="app.triggerLookup('${f}', this.value)" 
+                  class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none bg-slate-50">
+                </select>`;
       } else {
         const inputType = (s.type === 'NUMBER' || s.type === 'CURRENCY') ? 'number' : (s.type === 'DATE' ? 'date' : 'text');
-        html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" ${isLocked ? 'disabled' : ''} oninput="app.runLiveFormula()" class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">`;
+        // Tambahkan atribut required di sini
+        html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" 
+                  ${isLocked ? 'disabled' : ''} 
+                  ${isRequired ? 'required' : ''} 
+                  oninput="app.runLiveFormula()" 
+                  class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">`;
       }
+      
       if (isLocked) html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${val}">`;
       html += `</div>`;
     }
@@ -255,12 +266,20 @@ Object.assign(app, {
     this.runLiveFormula();
   },
 
+  
   async populateLookup(fieldId, table, fieldName, currentVal) {
     const select = document.getElementById(`f-${fieldId}`);
     if (!select) return;
+
+    // REQUIREMENT FE-02 & FE-04: FE tidak fetch browse manual, hanya ambil dari cache minimal
     const list = this.resourceCache[table] || [];
+    
+    // REQUIREMENT FE-03: Render dropdown normal (Reference Mode)
     select.innerHTML = `<option value="">-- PILIH --</option>` + 
-      list.map(item => `<option value="${item[fieldName]}" ${String(item[fieldName]) === String(currentVal) ? 'selected' : ''}>${item[fieldName]}</option>`).join('');
+      list.map(item => {
+        const label = item[fieldName] || item.id || 'N/A';
+        return `<option value="${this.escapeHTML(label)}" ${String(label) === String(currentVal) ? 'selected' : ''}>${this.escapeHTML(label)}</option>`;
+      }).join('');
   },
 
   triggerLookup(sourceField, value) {
@@ -268,6 +287,7 @@ Object.assign(app, {
     Object.keys(this.schema).forEach(targetField => {
       const s = this.schema[targetField];
       if (s.type === 'AUTOFILL' && s.autoTrigger === sourceField) {
+        // Autofill sinkronisasi berdasarkan label yang dipilih di lookup
         const tableData = this.resourceCache[s.autoTable] || [];
         const match = tableData.find(item => String(item[this.schema[sourceField].lookup?.field || sourceField]) === String(value));
         const el = document.getElementById(`f-${targetField}`);
@@ -301,18 +321,11 @@ Object.assign(app, {
     });
   },
 
-  /**
-   * ADVANCED SAFE MATH (Operator Precedence / Kabataku)
-   */
   safeMath(formula, context) {
     try {
-      // 1. Replace variables {key}
       let expression = formula.replace(/{(\w+)}/g, (match, key) => {
         return context[key] !== undefined ? context[key] : 0;
       });
-      
-      // 2. Safe Evaluation (Operator Precedence Enabled)
-      // Menggunakan constructor Function yang di-strict untuk menghindari scope global
       const fn = new Function(`"use strict"; return (${expression})`);
       return fn() || 0;
     } catch (e) {
@@ -324,7 +337,7 @@ Object.assign(app, {
   async remove(tableId, rowId) {
     if (!confirm('Hapus data secara permanen?')) return;
     const rowEl = document.getElementById(`row-${rowId}`);
-    if (rowEl) rowEl.style.opacity = '0.3'; // Optimistic Feedback
+    if (rowEl) rowEl.style.opacity = '0.3'; 
 
     try {
       const payload = {
