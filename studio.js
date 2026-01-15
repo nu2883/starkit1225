@@ -198,6 +198,7 @@ studioAddField() {
     document.getElementById('st-fields-container').insertAdjacentHTML('beforeend', html);
     this.syncStudioOptions(id);
   },
+
   syncAutofillOptions(id) {
     const row = document.getElementById(`st-f-${id}`);
     if (!row) return;
@@ -286,7 +287,7 @@ async studioMigrate() {
       show: n.querySelector('.st-show').checked,
       required: n.querySelector('.st-req').checked,
       disabled: n.querySelector('.st-disabled').checked,
-      formula: null,
+      formula: n.querySelector('.st-formula')?.value || null,
 
       lookup: (type === 'LOOKUP') ? {
         table: rTable,
