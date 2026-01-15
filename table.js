@@ -241,7 +241,7 @@ Object.assign(app, {
 
       if (s.type === 'LOOKUP' && s.lookup) {
         // Tambahkan atribut required di sini
-        html += `<select id="f-${f}" name="${f}" ${isRequired ? 'required' :悬} onchange="app.triggerLookup('${f}', this.value)" 
+        html += `<select id="f-${f}" name="${f}" ${isRequired ? 'required' : ''} onchange="app.triggerLookup('${f}', this.value)" 
                   class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none bg-slate-50">
                 </select>`;
       } else {

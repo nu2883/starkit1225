@@ -84,7 +84,37 @@ Object.assign(app, {
     }
   },
 
-  studioAddField() {
+  // Fungsi untuk sinkronisasi ID ke Label & Validasi DB Rule
+  handleIdInput(id, rawValue) {
+    const row = document.getElementById(`st-f-${id}`);
+    if (!row) return;
+
+    const nameInput = row.querySelector('.st-name');
+    const labelInput = row.querySelector('.st-label');
+
+    // 1. Validasi Aturan DB (Hanya boleh huruf, angka, dan underscore)
+    const dbFriendlyRegex = /^[a-z0-9_]*$/;
+    
+    if (!dbFriendlyRegex.test(rawValue)) {
+      alert("Aturan DB: Gunakan huruf kecil, angka, atau underscore saja (tanpa spasi/simbol)!");
+      // Bersihkan karakter terlarang secara otomatis
+      nameInput.value = rawValue.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      return;
+    }
+
+    // 2. Otomatis isi Label Tampilan (Manusiawi)
+    // Contoh: "harga_satuan" jadi "Harga Satuan"
+    const humanLabel = rawValue
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase());
+    
+    labelInput.value = humanLabel;
+
+    // 3. Jalankan sync bawaan studio
+    this.syncStudioOptions(id);
+  },
+
+studioAddField() {
     const id = Date.now();
     const html = `
       <div id="st-f-${id}" class="p-6 bg-slate-50 rounded-[2rem] border border-slate-200 space-y-4 mb-4 animate-fade-in">
@@ -97,8 +127,11 @@ Object.assign(app, {
         
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-[9px] font-black mb-1 text-slate-400">ID KOLOM</label>
-            <input type="text" class="st-name w-full p-3 border rounded-xl font-bold text-sm" placeholder="ex: harga_satuan" oninput="app.syncStudioOptions()">
+            <label class="block text-[9px] font-black mb-1 text-slate-400">ID KOLOM (SNAKE_CASE)</label>
+            <input type="text" 
+                   class="st-name w-full p-3 border rounded-xl font-bold text-sm focus:ring-2 ring-blue-100 outline-none" 
+                   placeholder="ex: harga_satuan" 
+                   oninput="app.handleIdInput('${id}', this.value)">
           </div>
           <div>
             <label class="block text-[9px] font-black mb-1 text-slate-400">TIPE DATA</label>
@@ -138,11 +171,11 @@ Object.assign(app, {
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-[9px] font-black mb-1 text-slate-400">LABEL TAMPILAN</label>
-            <input type="text" class="st-label w-full p-3 border rounded-xl text-sm font-bold" placeholder="Contoh: Harga Satuan">
+            <input type="text" class="st-label w-full p-3 border rounded-xl text-sm font-bold bg-white" placeholder="Contoh: Harga Satuan">
           </div>
           <div>
             <label class="block text-[9px] font-black mb-1 text-slate-400">FORMULA / REFERENCE</label>
-            <input type="text" class="st-formula w-full p-3 border rounded-xl text-sm font-bold" placeholder="Contoh: {qty}*{harga}">
+            <input type="text" class="st-formula w-full p-3 border rounded-xl text-sm font-bold bg-white" placeholder="Contoh: {qty}*{harga}">
           </div>
         </div>
 
@@ -165,7 +198,6 @@ Object.assign(app, {
     document.getElementById('st-fields-container').insertAdjacentHTML('beforeend', html);
     this.syncStudioOptions(id);
   },
-
   syncAutofillOptions(id) {
     const row = document.getElementById(`st-f-${id}`);
     if (!row) return;
@@ -193,93 +225,112 @@ Object.assign(app, {
     }
   },
 
-  async studioMigrate() {
-    const btn = document.getElementById('btn-migrate');
-    const tableName = document.getElementById('st-table-name').value;
-    const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
-    const fields = [];
-    
-    if (!tableName) return alert("Nama Tabel Wajib!");
+async studioMigrate() {
+  const btn = document.getElementById('btn-migrate');
+  const tableName = document.getElementById('st-table-name').value;
+  const fieldNodes = document.querySelectorAll('div[id^="st-f-"]');
+  const fields = [];
 
-    let validationError = false;
+  if (!tableName) {
+    alert("Nama Tabel Wajib!");
+    return;
+  }
 
-    fieldNodes.forEach(n => {
-      const rawName = n.querySelector('.st-name').value;
-      const colName = rawName.replace(/\s+/g, '').toLowerCase(); 
-      const type = n.querySelector('.st-type').value;
+  let validationError = false;
 
-      const rTable = n.querySelector('.st-rel-table')?.value || '';
-      const rField = n.querySelector('.st-rel-field')?.value || '';
-      const lookupModeCheckbox = n.querySelector('.st-lookup-ref');
+  fieldNodes.forEach(n => {
+    const rawName = n.querySelector('.st-name').value;
+    const colName = rawName.replace(/\s+/g, '').toLowerCase();
+    const type = n.querySelector('.st-type').value;
 
-      if (type === 'LOOKUP' && (!rTable || !rField)) {
-        alert(`Kolom "${colName}" LOOKUP belum lengkap!`);
-        validationError = true;
-      }
+    // === LOOKUP ===
+    const rTable = n.querySelector('.st-rel-table')?.value || null;
+    const rField = n.querySelector('.st-rel-field')?.value || null;
+    const lookupModeCheckbox = n.querySelector('.st-lookup-ref');
 
-      if (type === 'AUTOFILL') {
-        const aTrig = n.querySelector('.st-auto-trigger')?.value;
-        const aTab = n.querySelector('.st-auto-table')?.value;
-        const aCol = n.querySelector('.st-auto-col')?.value;
-        if (!aTrig || !aTab || !aCol) {
-          alert(`Kolom "${colName}" AUTOFILL belum lengkap!`);
-          validationError = true;
-        }
-      }
+    // === AUTOFILL (FORCE SYNC) ===
+    if (type === 'AUTOFILL') {
+      // 🔥 INI KUNCI: PAKSA FE SYNC VALUE SEBELUM DIBACA
+      this.syncAutofillOptions(n.id.replace('st-f-', ''));
+    }
 
-      // PERBAIKAN: MIGRATION DENGAN NIAT EKSPLISIT (LOOKUP MODE)
-      fields.push({
-        name: colName,
-        label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
-        type: type,
-        show: n.querySelector('.st-show').checked,
-        required: n.querySelector('.st-req').checked,
-        disabled: n.querySelector('.st-disabled').checked,
-        formula: n.querySelector('.st-formula').value || null,
-        
-        lookup: (type === 'LOOKUP') ? { 
-          table: rTable, 
-          field: rField,
-          mode: lookupModeCheckbox?.checked ? 'reference' : 'browse'
-        } : null,
+    const autoTrigger = type === 'AUTOFILL'
+      ? n.querySelector('.st-auto-trigger')?.value || null
+      : null;
 
-        autoTrigger: type === 'AUTOFILL' ? n.querySelector('.st-auto-trigger')?.value : '',
-        autoTable: type === 'AUTOFILL' ? n.querySelector('.st-auto-table')?.value : '',
-        autoCol: type === 'AUTOFILL' ? n.querySelector('.st-auto-col')?.value : ''
-      });
+    const autoTable = type === 'AUTOFILL'
+      ? n.querySelector('.st-auto-table')?.value || null
+      : null;
+
+    const autoCol = type === 'AUTOFILL'
+      ? n.querySelector('.st-auto-col')?.value || null
+      : null;
+
+    // === VALIDATION ===
+    if (type === 'LOOKUP' && (!rTable || !rField)) {
+      alert(`Kolom "${colName}" LOOKUP belum lengkap!`);
+      validationError = true;
+    }
+
+    if (type === 'AUTOFILL' && (!autoTrigger || !autoTable || !autoCol)) {
+      alert(`Kolom "${colName}" AUTOFILL belum lengkap!`);
+      console.error("AUTOFILL INVALID:", { colName, autoTrigger, autoTable, autoCol });
+      validationError = true;
+    }
+
+    // === PUSH FIELD (INTENT-DRIVEN) ===
+    fields.push({
+      name: colName,
+      label: n.querySelector('.st-label').value || colName.toUpperCase().replace(/_/g, ' '),
+      type,
+      show: n.querySelector('.st-show').checked,
+      required: n.querySelector('.st-req').checked,
+      disabled: n.querySelector('.st-disabled').checked,
+      formula: null,
+
+      lookup: (type === 'LOOKUP') ? {
+        table: rTable,
+        field: rField,
+        mode: lookupModeCheckbox?.checked ? 'reference' : 'browse'
+      } : null,
+
+      autoTrigger,
+      autoTable,
+      autoCol
+    });
+  });
+
+  if (validationError) return;
+
+  btn.innerText = "MIGRATING...";
+  btn.disabled = true;
+
+  try {
+    const response = await fetch(DYNAMIC_ENGINE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'migrate',
+        token: this.token || localStorage.getItem('sk_token'),
+        sheet: localStorage.getItem('sk_sheet'),
+        ua: navigator.userAgent,
+        data: { tableName, fields }
+      })
     });
 
-    if (validationError) return;
+    const res = await response.json();
+    if (!res.success) throw new Error(res.message);
 
-    btn.innerText = "MIGRATING...";
-    btn.disabled = true;
+    alert(`🚀 Sukses! Tabel "${tableName}" berhasil dibuat.`);
+    setTimeout(() => location.reload(), 800);
 
-    try {
-      const response = await fetch(DYNAMIC_ENGINE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'migrate',
-          token: this.token || localStorage.getItem('sk_token'),
-          sheet: localStorage.getItem('sk_sheet'),
-          ua: navigator.userAgent, 
-          data: { tableName, fields }
-        })
-      });
-
-      const res = await response.json();
-      if (res.success) {
-        alert("🚀 Sukses! Tabel '" + tableName + "' telah lahir.");
-        setTimeout(() => { location.reload(); }, 1000);
-      } else {
-        throw new Error(res.message);
-      }
-    } catch (error) {
-      alert("Gagal: " + error.message);
-      btn.innerText = "🚀 BIRTH NEW TABLE";
-      btn.disabled = false;
-    }
-  },
+  } catch (err) {
+    alert("Gagal: " + err.message);
+    btn.innerText = "🚀 BIRTH NEW TABLE";
+    btn.disabled = false;
+  }
+}
+,
 
   syncStudioOptions(id) {
     const resources = this.resources || this.allResources || [];
