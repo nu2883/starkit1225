@@ -1846,115 +1846,174 @@ async save() {
     }
   },
 
+// --- JEMBATAN GET: LOAD DATA DENGAN FAILOVER ---
   async get(params = {}) {
-  try {
-    showLoading(true);
-    const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
-    if (!dynamicEngineUrl) throw new Error('ENGINE_URL_NOT_FOUND');
+    try {
+      showLoading(true);
+      let dynamicEngineUrl = localStorage.getItem('sk_engine_url');
+      if (!dynamicEngineUrl) throw new Error('ENGINE_URL_NOT_FOUND');
 
-    let sheetId = localStorage.getItem('sk_sheet') || '';
-    if (sheetId.includes('/d/')) {
-      sheetId = sheetId.split('/d/')[1].split('/')[0];
-    }
+      let sheetId = localStorage.getItem('sk_sheet') || '';
+      if (sheetId.includes('/d/')) {
+        sheetId = sheetId.split('/d/')[1].split('/')[0];
+      }
 
-    // FIX: Ambil token secara agresif
-    const token = this.token || localStorage.getItem('sk_token') || '';
-    // FIX: Ambil serial secara agresif
-    const serial = localStorage.getItem('sk_serial') || '';
+      const token = this.token || localStorage.getItem('sk_token') || '';
+      const serial = localStorage.getItem('sk_serial') || '';
+      if (!token) throw new Error('TOKEN_MISSING');
 
-    if (!token) throw new Error('TOKEN_MISSING');
-
-    const baseParams = {
-      token,
-      sheet: sheetId,
-      ua: navigator.userAgent,
-      serial: serial // 🔥 Kirim SN
-    };
-
-    const finalParams = { ...params };
-    if (params.source === 'lookup') {
-      finalParams.mode = params.mode || 'browse';
-      finalParams.source = 'lookup';
-      delete finalParams.page;
-      delete finalParams.per_page;
-    }
-
-    const q = new URLSearchParams({ ...finalParams, ...baseParams }).toString();
-
-    const res = await fetch(`${dynamicEngineUrl}?${q}`, {
-      method: 'GET',
-      credentials: 'omit'
-    });
-
-    if (!res.ok) throw new Error(`HTTP_${res.status}`);
-    const data = await res.json();
-    showLoading(false);
-    return data;
-  } catch (e) {
-    console.error('GET_FATAL:', e);
-    showLoading(false);
-    return { success: false, message: e.message };
-  }
-},
-
-async post(arg1, arg2) {
-  try {
-    // 1. RESOLVE ENGINE URL
-    const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
-
-    // 2. RESOLVE TOKEN (Ambil dari instance atau storage)
-    const token = this.token || localStorage.getItem('sk_token') || '';
-    
-    // 3. RESOLVE SERIAL
-    const serial = localStorage.getItem('sk_serial') || '';
-
-    // 4. RESOLVE SHEET ID
-    let sheetId = localStorage.getItem('sk_sheet') || '';
-    if (sheetId.includes('/d/')) {
-      sheetId = sheetId.split('/d/')[1].split('/')[0];
-    }
-
-    console.log('[SK-DEBUG] Outbound SN:', serial);
-
-    let finalPayload;
-    // MODE OBJECT (Langsung kirim data object)
-    if (typeof arg1 === 'object' && !arg2) {
-      finalPayload = {
-        ...arg1,
-        token: token, // FIX: Jangan cuma this.token
+      const baseParams = {
+        token,
         sheet: sheetId,
         ua: navigator.userAgent,
         serial: serial 
       };
-    } 
-    // MODE CRUD (Action, Data)
-    else {
-      finalPayload = {
-        action: arg1,
-        table: this.currentTable,
-        data: arg2,
-        token: token, // FIX: Jangan cuma this.token
-        sheet: sheetId,
-        ua: navigator.userAgent,
-        serial: serial
-      };
+
+      const finalParams = { ...params };
+      if (params.source === 'lookup') {
+        finalParams.mode = params.mode || 'browse';
+        finalParams.source = 'lookup';
+        delete finalParams.page;
+        delete finalParams.per_page;
+      }
+
+      const q = new URLSearchParams({ ...finalParams, ...baseParams }).toString();
+
+      const res = await fetch(`${dynamicEngineUrl}?${q}`, {
+        method: 'GET',
+        credentials: 'omit'
+      });
+
+      // --- TRIGER TERIAK JIKA OVERLOAD (429/503) ---
+      if (res.status === 429 || res.status === 503) {
+        console.warn("🚨 Worker Overload (GET). Menghubungi Master...");
+        const newUrl = await this.shoutToMaster();
+        if (newUrl) return this.get(params); // Retry otomatis
+      }
+
+      if (!res.ok) throw new Error(`HTTP_${res.status}`);
+      const data = await res.json();
+      showLoading(false);
+      return data;
+    } catch (e) {
+      console.error('GET_FATAL:', e);
+      
+      // Jika koneksi putus (TypeError), coba minta engine baru
+      if (e.name === 'TypeError' || e.message.includes('HTTP')) {
+        const newUrl = await this.shoutToMaster();
+        if (newUrl) return this.get(params);
+      }
+
+      showLoading(false);
+      return { success: false, message: e.message };
     }
+  },
 
-    const res = await fetch(dynamicEngineUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finalPayload)
-    });
+  // --- JEMBATAN POST: COMMIT DATA DENGAN FAILOVER ---
+  async post(arg1, arg2) {
+    try {
+      const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
+      const token = this.token || localStorage.getItem('sk_token') || '';
+      const serial = localStorage.getItem('sk_serial') || '';
 
-    return await res.json();
-  } catch (e) {
-    console.error("[SK-ERROR] Post Error:", e);
-    return { success: false, message: "Koneksi ke Engine Terputus" };
-  }
-},
+      let sheetId = localStorage.getItem('sk_sheet') || '';
+      if (sheetId.includes('/d/')) {
+        sheetId = sheetId.split('/d/')[1].split('/')[0];
+      }
+
+      let finalPayload;
+      if (typeof arg1 === 'object' && !arg2) {
+        finalPayload = { ...arg1, token, sheet: sheetId, ua: navigator.userAgent, serial };
+      } else {
+        finalPayload = { action: arg1, table: this.currentTable, data: arg2, token, sheet: sheetId, ua: navigator.userAgent, serial };
+      }
+
+      const res = await fetch(dynamicEngineUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload)
+      });
+
+      // --- TRIGER TERIAK JIKA OVERLOAD ---
+      if (res.status === 429 || res.status === 503) {
+        console.warn("🚨 Worker Overload (POST). Menghubungi Master...");
+        const newUrl = await this.shoutToMaster();
+        if (newUrl) return this.post(arg1, arg2); // Retry otomatis
+      }
+
+      return await res.json();
+    } catch (e) {
+      console.error("[SK-ERROR] Post Error:", e);
+      
+      // Auto-rescue jika koneksi gagal total
+      const newUrl = await this.shoutToMaster();
+      if (newUrl) return this.post(arg1, arg2);
+
+      return { success: false, message: "Koneksi ke Engine Terputus" };
+    }
+  },
+
+// --- FUNGSI EMERGENCY RESCUE FE (Upgrade) ---
+// --- FUNGSI EMERGENCY RESCUE FE (Fixed CORS) ---
+  async shoutToMaster() {
+    try {
+      const serial = localStorage.getItem('sk_serial') || 'N/A';
+      const failedUrl = localStorage.getItem('sk_engine_url') || 'N/A';
+      const email = localStorage.getItem('sk_email') || 'N/A';
+
+      const payload = {
+        action: 'emergency_rescue',
+        serial: serial,
+        failed_url: failedUrl,
+        user_email: email
+      };
+
+      console.log('🚨 [Rescue FE] Mengirim shout ke master:', payload);
+
+      // SOLUSI CORS: Gunakan method POST tanpa Header application/json
+      const res = await fetch(BASE_MASTER_URL, {
+        method: 'POST',
+        // Kita gunakan text/plain agar browser tidak melakukan preflight OPTIONS
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+        body: JSON.stringify(payload)
+      });
+
+      const resultText = await res.text();
+      let result;
+      
+      try {
+        result = JSON.parse(resultText);
+      } catch (e) {
+        console.error("🔥 [Rescue FE] Respon Master bukan JSON valid:", resultText);
+        return null;
+      }
+
+      if (result.success && result.new_engine_url) {
+        localStorage.setItem('sk_engine_url', result.new_engine_url);
+        console.log(`🚑 [Rescue FE] Sukses! Engine Baru: ${result.new_engine_url}`);
+        return result.new_engine_url;
+      } else {
+        console.warn('⚠️ [Rescue FE] Master menolak shout:', result);
+      }
+
+    } catch (err) {
+      console.error("🔥 [Rescue FE] Master Engine tidak merespon!", err);
+    }
+    return null;
+  },
+
+  // async testShout() {
+  //   const newEngine = await this.shoutToMaster();
+  //   console.log('Hasil Test Shout:', newEngine ? 'BERHASIL: ' + newEngine : 'GAGAL');
+  // },
+
+
+
 
 
 
 
 };
 app.init();
+
+// app.testShout();
