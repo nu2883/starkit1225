@@ -1535,51 +1535,7 @@ studioAddField() {
 
 
   
-async post(arg1, arg2) {
-    try {
-      let finalPayload;
-      
-      // --- PERBAIKAN 1: Ekstraksi ID Brankas (Sama seperti fungsi get) ---
-      let sheetId = localStorage.getItem('sk_sheet') || '';
-      if (sheetId.includes('/d/')) {
-        sheetId = sheetId.split('/d/')[1].split('/')[0];
-      }
 
-      // JIKA DIPANGGIL: this.post({ action: '...', table: '...' }) -> (Dashboard/Sync)
-      if (typeof arg1 === 'object' && !arg2) {
-        finalPayload = { 
-          ...arg1, 
-          token: this.token,
-          sheet: sheetId,           // 🟢 WAJIB: Agar Engine tahu brankas mana
-          ua: navigator.userAgent   // 🟢 WAJIB: Untuk Session Binding
-        };
-      }
-      // JIKA DIPANGGIL: this.post('create', data) -> (CRUD Biasa & Otomasi)
-      else {
-        finalPayload = {
-          action: arg1,
-          table: this.currentTable,
-          data: arg2,
-          token: this.token,
-          sheet: sheetId,           // 🟢 WAJIB
-          ua: navigator.userAgent   // 🟢 WAJIB
-        };
-      }
-
-      // --- PERBAIKAN 2: Gunakan BASE_URL dinamis dari LocalStorage ---
-      // Pastikan di atas script, const BASE_URL = localStorage.getItem('sk_engine_url') 
-      const res = await fetch(DYNAMIC_ENGINE_URL, {
-        method: 'POST',
-        // 🔴 PERBAIKAN 3: Jangan gunakan 'no-cors' agar bisa baca res.json()
-        body: JSON.stringify(finalPayload)
-      });
-
-      return await res.json();
-    } catch (e) {
-      console.error("Post Error:", e);
-      return { success: false, message: "Koneksi ke Engine Terputus" };
-    }
-  },
 
 
 
@@ -1656,114 +1612,6 @@ async post(arg1, arg2) {
   },
 
 
-
-async get(params = {}) {
-  try {
-    showLoading(true);
-
-    /* =====================================================
-     * 1. ENGINE URL (WAJIB ADA)
-     * ===================================================== */
-    const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
-    if (!dynamicEngineUrl) {
-      throw new Error('ENGINE_URL_NOT_FOUND');
-    }
-
-    /* =====================================================
-     * 2. NORMALISASI SHEET ID
-     * ===================================================== */
-    let sheetId = localStorage.getItem('sk_sheet') || '';
-    if (sheetId.includes('/d/')) {
-      sheetId = sheetId.split('/d/')[1].split('/')[0];
-    }
-
-    /* =====================================================
-     * 3. TOKEN RESOLUTION (NO HARDCODE)
-     * ===================================================== */
-    const token =
-      this.token ||
-      localStorage.getItem('sk_token') ||
-      '';
-
-    if (!token) {
-      throw new Error('TOKEN_MISSING');
-    }
-
-    /* =====================================================
-     * 4. PARAMETER BASE (WAJIB)
-     * ===================================================== */
-    const baseParams = {
-      token,
-      sheet: sheetId,
-      ua: navigator.userAgent
-    };
-
-    /* =====================================================
-     * 5. 🔥 LOOKUP INTENT NORMALIZATION (INTI FIX)
-     * ===================================================== */
-    const finalParams = { ...params };
-
-    // Jika GET dipakai untuk lookup preload
-    if (params.source === 'lookup') {
-      finalParams.mode = params.mode || 'browse';
-      finalParams.source = 'lookup';
-
-      // 🔒 Guard: lookup tidak boleh paginate aneh
-      delete finalParams.page;
-      delete finalParams.per_page;
-    }
-
-    /* =====================================================
-     * 6. BUILD QUERY STRING
-     * ===================================================== */
-    const q = new URLSearchParams({
-      ...finalParams,
-      ...baseParams
-    }).toString();
-
-    /* =====================================================
-     * 7. EXECUTE FETCH
-     * ===================================================== */
-    const res = await fetch(`${dynamicEngineUrl}?${q}`, {
-      method: 'GET',
-      credentials: 'omit'
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP_${res.status}`);
-    }
-
-    const data = await res.json();
-
-    /* =====================================================
-     * 8. BACKEND REJECTION HANDLER
-     * ===================================================== */
-    if (data?.success === false) {
-      console.warn('BE Reject:', data.message);
-
-      if (
-        typeof data.message === 'string' &&
-        data.message.toLowerCase().includes('expired')
-      ) {
-        alert('Sesi habis, silakan login ulang.');
-        this.logout();
-        return data;
-      }
-    }
-
-    showLoading(false);
-    return data;
-
-  } catch (e) {
-    console.error('GET_FATAL:', e);
-    showLoading(false);
-
-    return {
-      success: false,
-      message: 'Koneksi Terputus / Server Error'
-    };
-  }
-},
 
 async loadResource(forceRefresh = false) {
   const vm = document.getElementById('view-mode')?.value || 'active';
@@ -1997,6 +1845,113 @@ async save() {
       this.isSubmitting = false;
     }
   },
+
+  async get(params = {}) {
+  try {
+    showLoading(true);
+    const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
+    if (!dynamicEngineUrl) throw new Error('ENGINE_URL_NOT_FOUND');
+
+    let sheetId = localStorage.getItem('sk_sheet') || '';
+    if (sheetId.includes('/d/')) {
+      sheetId = sheetId.split('/d/')[1].split('/')[0];
+    }
+
+    // FIX: Ambil token secara agresif
+    const token = this.token || localStorage.getItem('sk_token') || '';
+    // FIX: Ambil serial secara agresif
+    const serial = localStorage.getItem('sk_serial') || '';
+
+    if (!token) throw new Error('TOKEN_MISSING');
+
+    const baseParams = {
+      token,
+      sheet: sheetId,
+      ua: navigator.userAgent,
+      serial: serial // 🔥 Kirim SN
+    };
+
+    const finalParams = { ...params };
+    if (params.source === 'lookup') {
+      finalParams.mode = params.mode || 'browse';
+      finalParams.source = 'lookup';
+      delete finalParams.page;
+      delete finalParams.per_page;
+    }
+
+    const q = new URLSearchParams({ ...finalParams, ...baseParams }).toString();
+
+    const res = await fetch(`${dynamicEngineUrl}?${q}`, {
+      method: 'GET',
+      credentials: 'omit'
+    });
+
+    if (!res.ok) throw new Error(`HTTP_${res.status}`);
+    const data = await res.json();
+    showLoading(false);
+    return data;
+  } catch (e) {
+    console.error('GET_FATAL:', e);
+    showLoading(false);
+    return { success: false, message: e.message };
+  }
+},
+
+async post(arg1, arg2) {
+  try {
+    // 1. RESOLVE ENGINE URL
+    const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
+
+    // 2. RESOLVE TOKEN (Ambil dari instance atau storage)
+    const token = this.token || localStorage.getItem('sk_token') || '';
+    
+    // 3. RESOLVE SERIAL
+    const serial = localStorage.getItem('sk_serial') || '';
+
+    // 4. RESOLVE SHEET ID
+    let sheetId = localStorage.getItem('sk_sheet') || '';
+    if (sheetId.includes('/d/')) {
+      sheetId = sheetId.split('/d/')[1].split('/')[0];
+    }
+
+    console.log('[SK-DEBUG] Outbound SN:', serial);
+
+    let finalPayload;
+    // MODE OBJECT (Langsung kirim data object)
+    if (typeof arg1 === 'object' && !arg2) {
+      finalPayload = {
+        ...arg1,
+        token: token, // FIX: Jangan cuma this.token
+        sheet: sheetId,
+        ua: navigator.userAgent,
+        serial: serial 
+      };
+    } 
+    // MODE CRUD (Action, Data)
+    else {
+      finalPayload = {
+        action: arg1,
+        table: this.currentTable,
+        data: arg2,
+        token: token, // FIX: Jangan cuma this.token
+        sheet: sheetId,
+        ua: navigator.userAgent,
+        serial: serial
+      };
+    }
+
+    const res = await fetch(dynamicEngineUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalPayload)
+    });
+
+    return await res.json();
+  } catch (e) {
+    console.error("[SK-ERROR] Post Error:", e);
+    return { success: false, message: "Koneksi ke Engine Terputus" };
+  }
+},
 
 
 

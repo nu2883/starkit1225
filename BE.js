@@ -18,66 +18,126 @@ const SESSION_EXPIRY_MS = 21600000; // 6 Jam
 
 // PROPS.getProperty("MASTER_LOG_SHEET_ID") || 
 
-// ================== BUFFER LOG ==================
-function bufferEngineLog(activeRequests, notes) {
+// ================== BUFFER LOG (SMART SESSION) ==================
+function bufferEngineLog(userEmail, serialNumber, activeRequests = 1, notes = '') {
   try {
-    let cacheData = CACHE.get(ENGINE_CACHE_KEY);
-    let buffer = cacheData ? JSON.parse(cacheData) : [];
+    const raw = CACHE.get(ENGINE_CACHE_KEY);
+    const buffer = raw ? JSON.parse(raw) : {};
 
-    buffer.push({
-      timestamp: new Date().toISOString(),
-      engine_id: ENGINE_ID,
-      active_requests: activeRequests || 0,
-      notes: notes || ''
-    });
+    // --- LOGIC RECOVERY: CEK CACHE UNTUK SN YANG HILANG ---
+    let finalSerial = serialNumber || '';
+    
+    if (!finalSerial) {
+      // Cari apakah user ini (userEmail) sudah pernah masuk ke buffer dengan SN sebelumnya
+      // Kita scan buffer yang ada di cache saat ini
+      const entries = Object.values(buffer);
+      const previousEntry = entries.find(e => e.user === userEmail && e.serial !== '');
+      
+      if (previousEntry) {
+        finalSerial = previousEntry.serial; // Pulihkan SN yang hilang dari memory cache
+      }
+    }
 
-    CACHE.put(ENGINE_CACHE_KEY, JSON.stringify(buffer), 900); // 15 menit
+    // Key unik: Tetap sertakan finalSerial agar agregasi per SN tetap valid
+    const key = `${ENGINE_ID}|${userEmail}|${finalSerial}`;
+
+    if (!buffer[key]) {
+      buffer[key] = {
+        engine_id: ENGINE_ID,
+        user: userEmail,
+        serial: finalSerial,
+        request_count: 0,
+        first_ts: new Date().toISOString(),
+        last_ts: null,
+        notes: ''
+      };
+    }
+
+    // Update data
+    buffer[key].request_count += activeRequests;
+    buffer[key].last_ts = new Date().toISOString();
+    
+    if (notes) {
+      // Append notes agar history action terlihat
+      const oldNotes = buffer[key].notes || '';
+      if (!oldNotes.includes(notes)) {
+        buffer[key].notes = oldNotes ? oldNotes + "; " + notes : notes;
+      }
+    }
+
+    // Simpan ke Cache
+    const payload = JSON.stringify(buffer);
+    if (payload.length < 100000) {
+      CACHE.put(ENGINE_CACHE_KEY, payload, 1200);
+    } else {
+      flushEngineLogs();
+    }
   } catch (e) {
     console.warn('Buffer log failed', e);
   }
 }
 
+// ================== FLUSH LOGS (CLEANUP) ==================
 function flushEngineLogs() {
   try {
-    const cacheData = CACHE.get(ENGINE_CACHE_KEY);
-    if (!cacheData) return;
+    const raw = CACHE.get(ENGINE_CACHE_KEY);
+    if (!raw) return;
 
-    const buffer = JSON.parse(cacheData);
+    const buffer = JSON.parse(raw);
     const ss = SpreadsheetApp.openById(MASTER_LOG_SHEET_ID);
-    let logSheet = ss.getSheetByName(MASTER_LOG_TAB);
-    if (!logSheet) logSheet = ss.insertSheet(MASTER_LOG_TAB);
+    let sheet = ss.getSheetByName(MASTER_LOG_TAB);
 
-    const rows = buffer.map(e => [e.timestamp, e.engine_id, e.active_requests, e.notes]);
-    logSheet.getRange(logSheet.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
+    if (!sheet) {
+      sheet = ss.insertSheet(MASTER_LOG_TAB);
+      sheet.appendRow(['flush_time', 'engine', 'user', 'serial', 'req', 'start', 'end', 'actions']);
+    }
+
+    const rows = Object.values(buffer).map(e => [
+      Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd HH:mm:ss"),
+      e.engine_id,
+      e.user,
+      e.serial,
+      e.request_count,
+      Utilities.formatDate(new Date(e.first_ts), "GMT+7", "yyyy-MM-dd HH:mm:ss"),
+      Utilities.formatDate(new Date(e.last_ts), "GMT+7", "yyyy-MM-dd HH:mm:ss"),
+      e.notes
+    ]);
+
+    if (rows.length) {
+      // Filter: Jangan tulis baris yang benar-benar kosong user & serial-nya jika ada
+      const validRows = rows.filter(r => r[2] !== ''); 
+      if (validRows.length > 0) {
+        sheet.getRange(sheet.getLastRow() + 1, 1, validRows.length, validRows[0].length).setValues(validRows);
+      }
+    }
 
     CACHE.remove(ENGINE_CACHE_KEY);
   } catch (e) {
-    console.warn('Flush engine log failed', e);
+    console.warn('Flush failed', e);
   }
 }
 
 // ================== MAIN POST HANDLER ==================
 function doPost(e) {
   try {
-    let p = JSON.parse(e.postData.contents);
-
-    // Catat setiap request ke buffer log
-    bufferEngineLog(1, 'Request received: ' + (p.action || 'unknown'));
-
+    const p = JSON.parse(e.postData.contents || '{}');
     const SS = getDynamicSS(p.sheet);
-    if (!SS) {
-      bufferEngineLog(0, 'SS_MISSING for sheet: ' + (p.sheet || 'undefined'));
-      return out({ success: false, message: "SS_MISSING" });
-    }
+    if (!SS) return out({ success: false, message: "SS_MISSING" });
 
+    // 1. LOGIN (Tanpa Log Traffic)
     if (p.action === "login") return out(handleLogin(p, SS));
 
+    // 2. VERIFIKASI TOKEN
     const auth = verifyToken(p.token, p.ua);
-    if (!auth.valid) {
-      bufferEngineLog(0, 'Unauthorized token attempt');
-      return out({ success: false, message: "401_UNAUTHORIZED" });
-    }
+    if (!auth.valid) return out({ success: false, message: "401_UNAUTHORIZED" });
 
+    // 3. CAPTURE SERIAL (Prioritas Request p.serial)
+    const serial = p.serial || auth.user.serial || '';
+
+    // 4. RECORD LOG (Catat action-nya)
+    bufferEngineLog(auth.user.email, serial, 1, `POST:${p.action}`);
+
+    // 5. ACTION SWITCH
     switch (p.action) {
       case "migrate":
         return out(migrateNewTable(p.data, auth.user, SS));
@@ -88,40 +148,56 @@ function doPost(e) {
       case "delete":
         return out(handleWrite("delete", p.table, p.data, auth.user, SS));
       case "flush_logs":
-        if (auth.user.role !== 'admin') {
-          bufferEngineLog(0, 'Flush_logs forbidden for user: ' + auth.user.email);
-          return out({ success: false, message: "FORBIDDEN" });
-        }
-        return out(processPendingLogs(SS));
+        if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN" });
+        flushEngineLogs();
+        return out({ success: true });
       default:
-        bufferEngineLog(0, 'Unknown action: ' + (p.action || 'none'));
         return out({ success: false, message: "ACTION_UNKNOWN" });
     }
-
   } catch (err) {
-    bufferEngineLog(0, 'doPost error: ' + err.toString());
-    return out({ success: false, message: "REQ_ERR: " + err.toString() });
+    console.warn('doPost error', err);
+    return out({ success: false, message: "REQ_ERR" });
   }
 }
 
-
-
-// --- 2. API GATEWAY ---
+// ================== MAIN GET HANDLER ==================
 function doGet(e) {
   try {
-    const { action, table, token, viewMode, sheet: sheetUrl, ua, source, mode } = e.parameter;
+    const {
+      action,
+      table,
+      token,
+      viewMode,
+      sheet: sheetUrl,
+      ua,
+      source,
+      mode,
+      serial
+    } = e.parameter;
+
     const SS = getDynamicSS(sheetUrl);
     if (!SS) return out({ success: false, message: "SS_MISSING" });
 
     const auth = verifyToken(token, ua);
     if (!auth.valid) return out({ success: false, message: "401_UNAUTHORIZED" });
 
+    // CAPTURE SERIAL
+    const sn = serial || auth.user.serial || '';
+
+    // RECORD LOG
+    bufferEngineLog(auth.user.email, sn, 1, `GET:${action}`);
+
     switch (action) {
-      case "listResources": return out(listResources(auth.user, SS));
-      case "read":          return out(handleRead(table, auth.user, viewMode, SS, source, mode));
-      default:              return out({ success: false, message: "ACTION_UNKNOWN" });
+      case "listResources":
+        return out(listResources(auth.user, SS));
+      case "read":
+        return out(handleRead(table, auth.user, viewMode, SS, source, mode));
+      default:
+        return out({ success: false, message: "ACTION_UNKNOWN" });
     }
-  } catch (err) { return out({ success: false, message: "ERR: " + err.toString() }); }
+  } catch (err) {
+    return out({ success: false, message: "ERR: " + err.toString() });
+  }
 }
 
 
@@ -368,7 +444,7 @@ function handleWrite(action, tableName, payload, user, SS) {
   }
 }
 
-// --- 5. MIGRATION ENGINE ---
+// --- 5. MIGRATION ENGINE (FIXED: AUTOFILL RETENTION) ---
 function migrateNewTable(p, user, SS) {
   if (user.role !== 'admin') return { success: false, message: "Admin Only" };
   const tableName = p.tableName.toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -387,13 +463,20 @@ function migrateNewTable(p, user, SS) {
     ...p.fields.map(f => {
       let lookupData = f.lookup || null;
       if (f.type === "LOOKUP" && lookupData) lookupData.mode = "reference";
+      
+      // 🚀 PERBAIKAN DISINI: Daftarkan SEMUA property autofill agar tertulis ke Sheet
       return JSON.stringify({
         label: (f.label || f.name).toUpperCase(),
         type: (f.type || "TEXT").toUpperCase(),
         hidden: !f.show,
         required: f.required || false,
         disabled: f.disabled || false,
-        lookup: lookupData
+        lookup: lookupData,
+        // Tambahkan ini agar tidak hilang saat migrasi:
+        formula: f.formula || null,
+        autoTrigger: f.autoTrigger || null,
+        autoTable: f.autoTable || null,
+        autoCol: f.autoCol || null
       });
     })
   ];
@@ -469,18 +552,43 @@ function verifyToken(t, ua) {
   return { valid: true, user: session };
 }
 
-// --- 8. UTILS & HELPERS ---
+// --- 8. UTILS & HELPERS (FIXED: ROBUST PARSING) ---
 function getTableSchema(sheet) {
   const lastCol = sheet.getLastColumn();
   if (lastCol === 0) return {};
-  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  const configRow = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
+  
+  const range = sheet.getRange(1, 1, 2, lastCol).getValues();
+  const headers = range[0];
+  const configRow = range[1];
   const schema = {};
+  
   headers.forEach((h, i) => {
     if (!h) return;
     const cleanKey = String(h).trim().toLowerCase().replace(/\s+/g, '_');
-    let config = { label: h.toUpperCase(), type: "TEXT" };
-    try { if (configRow[i]) config = Object.assign(config, JSON.parse(configRow[i])); } catch (e) {}
+    
+    // Default config
+    let config = { 
+      label: h.toUpperCase(), 
+      type: "TEXT",
+      autoTrigger: null, 
+      autoTable: null, 
+      autoCol: null 
+    };
+    
+    // 🚀 PERBAIKAN DISINI: Pastikan JSON diparsing dengan benar
+    if (configRow[i]) {
+      try {
+        const strConfig = String(configRow[i]);
+        if (strConfig.startsWith('{')) {
+          const parsed = JSON.parse(strConfig);
+          // Gunakan spread operator agar property dari JSON menimpa default
+          config = { ...config, ...parsed };
+        }
+      } catch (e) {
+        console.error("Gagal parse config kolom: " + h);
+      }
+    }
+    
     config.name = cleanKey;
     config.headerIdx = i;
     schema[cleanKey] = config;
