@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>STARKIT VOYAGER - JURAGAN MODE</title>
+    <title>STARKIT</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       rel="stylesheet"
@@ -294,8 +294,13 @@
               id="btn-add"
               onclick="app.openForm()"
               class="hidden bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-all active:scale-95 uppercase text-xs tracking-widest"
+              title="Shortcut: Alt+N"
             >
               <i class="fa-solid fa-plus mr-2"></i> Create New
+              <span
+                class="shortcut-label hidden lg:inline ml-1 text-[10px] text-white/70"
+                >(Alt+N)</span
+              >
             </button>
           </div>
         </header>
@@ -431,7 +436,7 @@
           <p
             class="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1 mb-8"
           >
-            Juragan SaaS Engine
+            SaaS Engine
           </p>
 
           <div class="space-y-4">
@@ -450,35 +455,35 @@
               </button>
             </div>
 
-<div id="login-box" class="space-y-4 hidden">
-  <input
-    id="login-email"
-    type="email"
-    placeholder="Email Juragan"
-    class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-  />
-  <input
-    id="login-pass"
-    type="password"
-    onkeyup="auth.handleKeyPress(event)" 
-    placeholder="Password"
-    class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-  />
-  <button
-    id="btn-login-action"
-    onclick="auth.login()"
-    class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all"
-  >
-    AUTHORIZE
-  </button>
-  
-  <button
-    onclick="auth.resetSerial()"
-    class="w-full text-[10px] text-red-500 font-black uppercase tracking-widest mt-2"
-  >
-    Ganti Serial Number
-  </button>
-</div>
+            <div id="login-box" class="space-y-4 hidden">
+              <input
+                id="login-email"
+                type="email"
+                placeholder="Email Juragan"
+                class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+              />
+              <input
+                id="login-pass"
+                type="password"
+                onkeyup="auth.handleKeyPress(event)"
+                placeholder="Password"
+                class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+              />
+              <button
+                id="btn-login-action"
+                onclick="auth.login()"
+                class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all"
+              >
+                AUTHORIZE
+              </button>
+
+              <button
+                onclick="auth.resetSerial()"
+                class="w-full text-[10px] text-red-500 font-black uppercase tracking-widest mt-2"
+              >
+                Ganti Serial Number
+              </button>
+            </div>
 
             <p
               id="login-msg"
@@ -529,77 +534,83 @@
     <script src="studio.js"></script>
     <script src="table.js"></script>
 
-<script>
-  /**
-   * UI NAVIGATION MANAGER
-   * Memastikan sistem navigasi mobile tetap berjalan meskipun script utama sedang loading.
-   */
-  
-  // 1. Force initialize objek app agar tidak undefined saat diklik
-  window.app = window.app || {};
+    <script>
+      /**
+       * UI NAVIGATION MANAGER
+       * Memastikan sistem navigasi mobile tetap berjalan meskipun script utama sedang loading.
+       */
 
-  // 2. Definisi fungsi sidebar secara langsung (Global Scope)
-  window.app.openMobileSidebar = function() {
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
-    console.log("Opening sidebar...");
-    if (sidebar) sidebar.classList.add("active");
-    if (overlay) overlay.classList.add("active");
-  };
+      // 1. Force initialize objek app agar tidak undefined saat diklik
+      window.app = window.app || {};
 
-  window.app.closeMobileSidebar = function() {
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
-    console.log("Closing sidebar...");
-    if (sidebar) sidebar.classList.remove("active");
-    if (overlay) overlay.classList.remove("active");
-  };
-
-  // 3. Tunggu DOM siap untuk memasang Listener tambahan
-  document.addEventListener("DOMContentLoaded", function () {
-    initMobileSidebarListeners();
-  });
-
-  function initMobileSidebarListeners() {
-    // Manually attach click event ke hamburger button (mencegah konflik inline onclick)
-    const hamburgerBtn = document.querySelector('button[onclick*="openMobileSidebar"]');
-    if (hamburgerBtn) {
-      hamburgerBtn.onclick = function(e) {
-        e.preventDefault();
-        window.app.openMobileSidebar();
+      // 2. Definisi fungsi sidebar secara langsung (Global Scope)
+      window.app.openMobileSidebar = function () {
+        const sidebar = document.getElementById("sidebar");
+        const overlay = document.getElementById("sidebar-overlay");
+        console.log("Opening sidebar...");
+        if (sidebar) sidebar.classList.add("active");
+        if (overlay) overlay.classList.add("active");
       };
-    }
 
-    // Manually attach click event ke close button
-    const closeBtn = document.querySelector('button[onclick*="closeMobileSidebar"]');
-    if (closeBtn) {
-      closeBtn.onclick = function(e) {
-        e.preventDefault();
-        window.app.closeMobileSidebar();
+      window.app.closeMobileSidebar = function () {
+        const sidebar = document.getElementById("sidebar");
+        const overlay = document.getElementById("sidebar-overlay");
+        console.log("Closing sidebar...");
+        if (sidebar) sidebar.classList.remove("active");
+        if (overlay) overlay.classList.remove("active");
       };
-    }
 
-    // Attach click event ke overlay (Klik di luar sidebar untuk menutup)
-    const overlay = document.getElementById("sidebar-overlay");
-    if (overlay) {
-      overlay.onclick = function() {
-        window.app.closeMobileSidebar();
-      };
-    }
+      // 3. Tunggu DOM siap untuk memasang Listener tambahan
+      document.addEventListener("DOMContentLoaded", function () {
+        initMobileSidebarListeners();
+      });
 
-    /**
-     * Otomatis tutup sidebar saat menu diklik (Khusus Mobile)
-     * Menggunakan delegasi event agar lebih ringan
-     */
-    document.addEventListener('click', function(e) {
-      if (window.innerWidth < 768) {
-        const isNavLink = e.target.closest('.nav-btn') || e.target.closest('#system-tools button');
-        if (isNavLink) {
-          window.app.closeMobileSidebar();
+      function initMobileSidebarListeners() {
+        // Manually attach click event ke hamburger button (mencegah konflik inline onclick)
+        const hamburgerBtn = document.querySelector(
+          'button[onclick*="openMobileSidebar"]'
+        );
+        if (hamburgerBtn) {
+          hamburgerBtn.onclick = function (e) {
+            e.preventDefault();
+            window.app.openMobileSidebar();
+          };
         }
+
+        // Manually attach click event ke close button
+        const closeBtn = document.querySelector(
+          'button[onclick*="closeMobileSidebar"]'
+        );
+        if (closeBtn) {
+          closeBtn.onclick = function (e) {
+            e.preventDefault();
+            window.app.closeMobileSidebar();
+          };
+        }
+
+        // Attach click event ke overlay (Klik di luar sidebar untuk menutup)
+        const overlay = document.getElementById("sidebar-overlay");
+        if (overlay) {
+          overlay.onclick = function () {
+            window.app.closeMobileSidebar();
+          };
+        }
+
+        /**
+         * Otomatis tutup sidebar saat menu diklik (Khusus Mobile)
+         * Menggunakan delegasi event agar lebih ringan
+         */
+        document.addEventListener("click", function (e) {
+          if (window.innerWidth < 768) {
+            const isNavLink =
+              e.target.closest(".nav-btn") ||
+              e.target.closest("#system-tools button");
+            if (isNavLink) {
+              window.app.closeMobileSidebar();
+            }
+          }
+        });
       }
-    });
-  }
-</script>
+    </script>
   </body>
 </html>

@@ -1,18 +1,18 @@
 // 1. Ambil dari storage
-const DYNAMIC_ENGINE_URL = localStorage.getItem('sk_engine_url');
-const DYNAMIC_SHEET_ID   = localStorage.getItem('sk_sheet');
+const DYNAMIC_ENGINE_URL = localStorage.getItem("sk_engine_url");
+const DYNAMIC_SHEET_ID = localStorage.getItem("sk_sheet");
 
 function showLoading(status) {
-  const loader = document.getElementById('loader'); // Pastikan ID ini ada di HTML Anda
+  const loader = document.getElementById("loader"); // Pastikan ID ini ada di HTML Anda
   if (!loader) return;
-  status ? loader.classList.remove('hidden') : loader.classList.add('hidden');
+  status ? loader.classList.remove("hidden") : loader.classList.add("hidden");
 }
 
 const app = {
-  token: localStorage.getItem('sk_token'),
-  role: localStorage.getItem('sk_role'),
-  email: localStorage.getItem('sk_email'),
-  currentTable: '',
+  token: localStorage.getItem("sk_token"),
+  role: localStorage.getItem("sk_role"),
+  email: localStorage.getItem("sk_email"),
+  currentTable: "",
   schema: {},
   modes: {},
   editingId: null,
@@ -24,31 +24,41 @@ const app = {
   widgetResults: [],
   sortState: {
     column: null,
-    direction: null // 'asc' | 'desc' | null
+    direction: null, // 'asc' | 'desc' | null
   },
-  dashboardConfigs: JSON.parse(localStorage.getItem('sk_dashboard_config')) || [],
+  dashboardConfigs:
+    JSON.parse(localStorage.getItem("sk_dashboard_config")) || [],
   permissions: {}, // Sekarang berbentuk Object Map
-
-
-
-
+  tableSortDesc: true, // default: terbaru di atas
 
   async populateLookup(id, table, field, currentVal) {
     const el = document.getElementById(`f-${id}`);
     const opts = await this.getLookupOptions(table, field);
-    if (el) el.innerHTML = `<option value="">-- Pilih --</option>` + opts.map(opt => `<option value="${opt}" ${String(opt) === String(currentVal) ? 'selected' : ''}>${opt}</option>`).join('');
+    if (el)
+      el.innerHTML =
+        `<option value="">-- Pilih --</option>` +
+        opts
+          .map(
+            (opt) =>
+              `<option value="${opt}" ${
+                String(opt) === String(currentVal) ? "selected" : ""
+              }>${opt}</option>`
+          )
+          .join("");
   },
 
   async getLookupOptions(table, field) {
-    if (this.resourceCache[table]) return [...new Set(this.resourceCache[table].map(r => r[field]))].filter(v => v);
-    const res = await this.get({ action: 'read', table: table });
+    if (this.resourceCache[table])
+      return [
+        ...new Set(this.resourceCache[table].map((r) => r[field])),
+      ].filter((v) => v);
+    const res = await this.get({ action: "read", table: table });
     if (res.success) {
       this.resourceCache[table] = res.rows;
-      return [...new Set(res.rows.map(r => r[field]))].filter(v => v);
+      return [...new Set(res.rows.map((r) => r[field]))].filter((v) => v);
     }
     return [];
   },
-
 
   updateFieldValue(id, val) {
     const el = document.getElementById(`f-${id}`);
@@ -69,24 +79,21 @@ const app = {
         try {
           const result = eval(solved);
           this.updateFieldValue(key, result);
-        } catch (e) { }
+        } catch (e) {}
       }
     }
   },
 
-
-
-
-
-
-
   syncStudioOptions(targetId = null) {
     // 1. Ambil list tabel dan pastikan ID-nya bersih (lowercase, no space)
-    const tableOpts = '<option value="">-- Pilih Tabel --</option>' +
-      (this.allResources || []).map(r => {
-        const cleanId = r.id.toLowerCase().replace(/\s+/g, ''); // Paksa bersih
-        return `<option value="${cleanId}">${cleanId}</option>`; // Tampilkan apa adanya (lowercase)
-      }).join('');
+    const tableOpts =
+      '<option value="">-- Pilih Tabel --</option>' +
+      (this.allResources || [])
+        .map((r) => {
+          const cleanId = r.id.toLowerCase().replace(/\s+/g, ""); // Paksa bersih
+          return `<option value="${cleanId}">${cleanId}</option>`; // Tampilkan apa adanya (lowercase)
+        })
+        .join("");
 
     const updateRow = (divId) => {
       const relT = document.querySelector(`#st-f-${divId} .st-rel-table`);
@@ -99,7 +106,9 @@ const app = {
     if (targetId) {
       updateRow(targetId);
     } else {
-      document.querySelectorAll('div[id^="st-f-"]').forEach(d => updateRow(d.id.replace('st-f-', '')));
+      document
+        .querySelectorAll('div[id^="st-f-"]')
+        .forEach((d) => updateRow(d.id.replace("st-f-", "")));
     }
   },
 
@@ -110,7 +119,9 @@ const app = {
     const select = document.querySelector(`#st-f-${id} .st-rel-field`);
 
     if (!select || !resource || !resource.schema) {
-      if (select) select.innerHTML = '<option value="">-- Kolom Tidak Ditemukan --</option>';
+      if (select)
+        select.innerHTML =
+          '<option value="">-- Kolom Tidak Ditemukan --</option>';
       return;
     }
 
@@ -120,13 +131,15 @@ const app = {
     // 3. Render ke Dropdown
     select.innerHTML = `
     <option value="">-- Pilih Kolom --</option>
-    ${fieldKeys.map(key => {
-      // Kita bersihkan key: kecilkan semua & hapus spasi untuk VALUE mesin
-      const cleanKey = key.toLowerCase().replace(/\s+/g, '');
+    ${fieldKeys
+      .map((key) => {
+        // Kita bersihkan key: kecilkan semua & hapus spasi untuk VALUE mesin
+        const cleanKey = key.toLowerCase().replace(/\s+/g, "");
 
-      // Tampilkan key yang bersih di dropdown agar Juragan tahu ID aslinya
-      return `<option value="${cleanKey}">${cleanKey}</option>`;
-    }).join('')}
+        // Tampilkan key yang bersih di dropdown agar Juragan tahu ID aslinya
+        return `<option value="${cleanKey}">${cleanKey}</option>`;
+      })
+      .join("")}
   `;
   },
 
@@ -139,12 +152,12 @@ const app = {
     if (oldAuto) oldAuto.remove();
 
     // Sembunyikan UI Relasi standar
-    relUI.classList.add('hidden');
+    relUI.classList.add("hidden");
 
-    if (type === 'LOOKUP') {
-      relUI.classList.remove('hidden');
+    if (type === "LOOKUP") {
+      relUI.classList.remove("hidden");
       this.syncStudioOptions(id);
-    } else if (type === 'AUTOFILL') {
+    } else if (type === "AUTOFILL") {
       // BUAT 3 KOLOM DROPDOWN UNTUK AUTOFILL
       const html = `
             <div id="autofill-ui-${id}" class="p-4 bg-orange-50 rounded-xl grid grid-cols-3 gap-3 border border-orange-100 mt-2 animate-fade-in">
@@ -168,7 +181,7 @@ const app = {
                 </select>
               </div>
             </div>`;
-      relUI.insertAdjacentHTML('afterend', html);
+      relUI.insertAdjacentHTML("afterend", html);
 
       // Isi data dropdown-nya
       this.syncAutofillOptions(id);
@@ -180,38 +193,43 @@ const app = {
     colSelect.innerHTML = '<option value="">Loading...</option>';
 
     // Fetch data schema tabel sumber
-    const d = await this.get({ action: 'read', table: tableName, limit: 1 });
+    const d = await this.get({ action: "read", table: tableName, limit: 1 });
     if (d.success && d.schema) {
-      colSelect.innerHTML = '<option value="">-- Pilih Kolom --</option>' +
-        Object.keys(d.schema).map(f => `<option value="${f}">${f}</option>`).join('');
+      colSelect.innerHTML =
+        '<option value="">-- Pilih Kolom --</option>' +
+        Object.keys(d.schema)
+          .map((f) => `<option value="${f}">${f}</option>`)
+          .join("");
     } else {
       colSelect.innerHTML = '<option value="">Gagal muat kolom</option>';
     }
   },
   syncAutofillOptions(id) {
     const row = document.getElementById(`st-f-${id}`);
-    const triggerSelect = row.querySelector('.st-auto-trigger');
-    const tableSelect = row.querySelector('.st-auto-table');
+    const triggerSelect = row.querySelector(".st-auto-trigger");
+    const tableSelect = row.querySelector(".st-auto-table");
 
     // 1. Ambil semua field yang sudah dibuat di studio saat ini untuk jadi pemicu
-    const currentFields = Array.from(document.querySelectorAll('.st-name'))
-      .map(input => input.value)
-      .filter(v => v !== "");
+    const currentFields = Array.from(document.querySelectorAll(".st-name"))
+      .map((input) => input.value)
+      .filter((v) => v !== "");
 
-    triggerSelect.innerHTML = '<option value="">-- Pilih Trigger --</option>' +
-      currentFields.map(f => `<option value="${f}">${f}</option>`).join('');
+    triggerSelect.innerHTML =
+      '<option value="">-- Pilih Trigger --</option>' +
+      currentFields.map((f) => `<option value="${f}">${f}</option>`).join("");
 
     // 2. Ambil daftar tabel dari resources
     if (this.allResources) {
-      tableSelect.innerHTML = '<option value="">-- Pilih Tabel --</option>' +
-        this.allResources.map(r => `<option value="${r.id}">${r.id}</option>`).join('');
+      tableSelect.innerHTML =
+        '<option value="">-- Pilih Tabel --</option>' +
+        this.allResources
+          .map((r) => `<option value="${r.id}">${r.id}</option>`)
+          .join("");
     }
   },
 
-
-
   renderSchemaData() {
-    const container = document.getElementById('schema-content-area');
+    const container = document.getElementById("schema-content-area");
     if (!container) return;
 
     let html = `
@@ -254,33 +272,51 @@ const app = {
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-50">
-                    ${Object.entries(schema).map(([k, v]) => {
-        const isSystem = v.hidden;
-        return `
-                      <tr class="group transition-all ${isSystem ? 'bg-slate-50/40 opacity-70' : 'hover:bg-blue-50/30'}">
+                    ${Object.entries(schema)
+                      .map(([k, v]) => {
+                        const isSystem = v.hidden;
+                        return `
+                      <tr class="group transition-all ${
+                        isSystem
+                          ? "bg-slate-50/40 opacity-70"
+                          : "hover:bg-blue-50/30"
+                      }">
                         <td class="px-8 py-5">
                           <div class="flex flex-col">
                             <span class="text-sm font-bold text-slate-800 uppercase tracking-tight group-hover:text-blue-600 transition-colors">${k}</span>
                             <div class="flex items-center gap-2 mt-1">
-                               <span class="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 uppercase">${v.type || 'TEXT'}</span>
-                               <span class="text-[9px] text-slate-400 font-medium italic">${v.label || '-'}</span>
+                               <span class="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 uppercase">${
+                                 v.type || "TEXT"
+                               }</span>
+                               <span class="text-[9px] text-slate-400 font-medium italic">${
+                                 v.label || "-"
+                               }</span>
                             </div>
                           </div>
                         </td>
                         <td class="px-8 py-5 text-center">
-                           <i class="fa-solid ${v.hidden ? 'fa-eye-slash text-slate-300' : 'fa-eye text-emerald-500'} text-sm"></i>
+                           <i class="fa-solid ${
+                             v.hidden
+                               ? "fa-eye-slash text-slate-300"
+                               : "fa-eye text-emerald-500"
+                           } text-sm"></i>
                         </td>
                         <td class="px-8 py-5 text-center">
                            <div class="flex justify-center gap-2">
-                             <span title="Required" class="w-2 h-2 rounded-full ${v.required ? 'bg-blue-500' : 'bg-slate-100'} shadow-sm"></span>
-                             <span title="Disabled" class="w-2 h-2 rounded-full ${v.disabled ? 'bg-orange-500' : 'bg-slate-100'} shadow-sm"></span>
+                             <span title="Required" class="w-2 h-2 rounded-full ${
+                               v.required ? "bg-blue-500" : "bg-slate-100"
+                             } shadow-sm"></span>
+                             <span title="Disabled" class="w-2 h-2 rounded-full ${
+                               v.disabled ? "bg-orange-500" : "bg-slate-100"
+                             } shadow-sm"></span>
                            </div>
                         </td>
                         <td class="px-8 py-5">
                           ${this.badgeLogic(v)}
                         </td>
                       </tr>`;
-      }).join('')}
+                      })
+                      .join("")}
                   </tbody>
                 </table>
               </div>
@@ -293,9 +329,9 @@ const app = {
     let badges = [];
 
     // 1. LOOKUP (Relational)
-    if (v.lookup || v.type === 'LOOKUP') {
-      const table = v.lookup?.table || v.autoTable || 'table';
-      const field = v.lookup?.field || v.autoCol || 'field';
+    if (v.lookup || v.type === "LOOKUP") {
+      const table = v.lookup?.table || v.autoTable || "table";
+      const field = v.lookup?.field || v.autoCol || "field";
       badges.push(`
             <div class="flex flex-col gap-1.5 bg-blue-50 p-3 rounded-2xl border border-blue-100 min-w-[150px]">
               <span class="text-[9px] font-black text-blue-600 uppercase tracking-tighter flex items-center gap-2">
@@ -308,7 +344,7 @@ const app = {
     }
 
     // 2. AUTO-INJECTION (Autofill)
-    if (v.type === 'AUTOFILL' || v.autoTrigger) {
+    if (v.type === "AUTOFILL" || v.autoTrigger) {
       badges.push(`
             <div class="flex flex-col gap-2 bg-orange-50 p-3 rounded-2xl border border-orange-100 min-w-[180px]">
               <div class="flex items-center gap-2">
@@ -316,15 +352,19 @@ const app = {
                 <span class="text-[9px] font-black text-orange-600 uppercase tracking-tighter">Auto-Injection Flow</span>
               </div>
               <div class="flex items-center gap-2 bg-white/50 p-1.5 rounded-lg border border-orange-200/50">
-                <span class="px-1.5 py-0.5 bg-orange-600 text-white rounded text-[8px] font-black uppercase">${v.autoTrigger || 'trigger'}</span>
+                <span class="px-1.5 py-0.5 bg-orange-600 text-white rounded text-[8px] font-black uppercase">${
+                  v.autoTrigger || "trigger"
+                }</span>
                 <i class="fa-solid fa-arrow-right-long text-orange-300 text-[10px]"></i>
-                <span class="text-[10px] font-bold text-orange-800 tracking-tight">${v.autoTable || 'table'}.${v.autoCol || 'col'}</span>
+                <span class="text-[10px] font-bold text-orange-800 tracking-tight">${
+                  v.autoTable || "table"
+                }.${v.autoCol || "col"}</span>
               </div>
             </div>`);
     }
 
     // 3. FORMULA (Compute)
-    if (v.type === 'FORMULA' || v.formula) {
+    if (v.type === "FORMULA" || v.formula) {
       badges.push(`
             <div class="flex flex-col gap-1.5 bg-purple-50 p-3 rounded-2xl border border-purple-100 min-w-[150px]">
               <span class="text-[9px] font-black text-purple-600 uppercase tracking-tighter flex items-center gap-2">
@@ -335,16 +375,16 @@ const app = {
     }
 
     return badges.length > 0
-      ? `<div class="flex flex-wrap gap-2">${badges.join('')}</div>`
+      ? `<div class="flex flex-wrap gap-2">${badges.join("")}</div>`
       : `<span class="text-slate-300 text-[9px] font-bold uppercase tracking-[0.2em] italic pl-2">Standard Data</span>`;
   },
 
   editSchemaShortcut(tableName) {
     this.openAppStudio();
-    const selector = document.getElementById('st-table-selector');
+    const selector = document.getElementById("st-table-selector");
     if (selector) {
       selector.value = tableName;
-      selector.dispatchEvent(new Event('change'));
+      selector.dispatchEvent(new Event("change"));
     }
   },
 
@@ -352,91 +392,109 @@ const app = {
   updateSidebarUI(id) {
     // 1. SAPU BERSIH: Ambil SEMUA elemen yang mungkin punya warna biru
     // Kita incar semua button di dalam nav
-    document.querySelectorAll('nav button, .nav-btn').forEach(b => {
-      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-      b.classList.add('text-slate-400');
+    document.querySelectorAll("nav button, .nav-btn").forEach((b) => {
+      b.classList.remove(
+        "bg-blue-600",
+        "text-white",
+        "shadow-lg",
+        "sidebar-active"
+      );
+      b.classList.add("text-slate-400");
     });
 
     // 2. WARNAI YANG BARU: Hanya tombol yang ID-nya pas dengan menu sekarang
     const activeBtn = document.getElementById(`nav-${id}`);
     if (activeBtn) {
-      activeBtn.classList.remove('text-slate-400');
-      activeBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+      activeBtn.classList.remove("text-slate-400");
+      activeBtn.classList.add(
+        "bg-blue-600",
+        "text-white",
+        "shadow-lg",
+        "sidebar-active"
+      );
     }
 
     // 3. UPDATE JUDUL
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = id.replace(/_/g, ' ').toUpperCase();
+    const titleEl = document.getElementById("cur-title");
+    if (titleEl) titleEl.innerText = id.replace(/_/g, " ").toUpperCase();
   },
 
   // Fungsi pembantu agar navigasi tidak biru semua
 
-
   // Masukkan di dalam const app = { ... }
-
-
-
 
   // --- SCHEMA SECTION ---
   viewSchemaExplorer() {
     this.resetViews();
-    this.currentView = 'explorer';
-    this.currentTable = 'SCHEMA_EXPLORER';
+    this.currentView = "explorer";
+    this.currentTable = "SCHEMA_EXPLORER";
 
     // 1. UI Switch (Kamar CRUD & Studio ditutup)
-    document.getElementById('view-crud')?.classList.add('hidden');
-    document.getElementById('view-app-studio')?.classList.add('hidden');
-    document.getElementById('view-schema-explorer')?.classList.remove('hidden');
+    document.getElementById("view-crud")?.classList.add("hidden");
+    document.getElementById("view-app-studio")?.classList.add("hidden");
+    document.getElementById("view-schema-explorer")?.classList.remove("hidden");
 
     // --- TAMBAHAN: Sembunyikan Search Bar (Penting!) ---
-    document.getElementById('search-container')?.classList.add('hidden');
+    document.getElementById("search-container")?.classList.add("hidden");
 
     // 2. Header & Navigasi
-    const titleEl = document.getElementById('cur-title');
+    const titleEl = document.getElementById("cur-title");
     if (titleEl) titleEl.innerText = "SCHEMA INTELLIGENCE";
 
-    document.querySelectorAll('.nav-btn, #nav-app-studio, #nav-schema-explorer').forEach(b => {
-      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-      b.classList.add('text-slate-400');
-    });
+    document
+      .querySelectorAll(".nav-btn, #nav-app-studio, #nav-schema-explorer")
+      .forEach((b) => {
+        b.classList.remove(
+          "bg-blue-600",
+          "text-white",
+          "shadow-lg",
+          "sidebar-active"
+        );
+        b.classList.add("text-slate-400");
+      });
 
-    const navBtn = document.getElementById('nav-schema-explorer');
-    if (navBtn) navBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+    const navBtn = document.getElementById("nav-schema-explorer");
+    if (navBtn)
+      navBtn.classList.add(
+        "bg-blue-600",
+        "text-white",
+        "shadow-lg",
+        "sidebar-active"
+      );
 
     // 3. Render Data dengan Cleansing
     // Kita kosongkan dulu agar tidak ada data "hantu" dari proses sebelumnya
-    const container = document.getElementById('schema-content-area');
-    if (container) container.innerHTML = '';
+    const container = document.getElementById("schema-content-area");
+    if (container) container.innerHTML = "";
 
     this.renderSchemaData();
   },
 
-
   // --- DASHBOARD SECTION ---
 
   async selectResource(id) {
-    if (this.currentTable === id && this.currentView === 'data') return;
+    if (this.currentTable === id && this.currentView === "data") return;
 
     // 1. Matikan semua view (termasuk dashboard & crud)
     this.resetViews();
 
     // 2. Set State
     this.currentTable = id;
-    this.currentView = 'data';
+    this.currentView = "data";
 
     // 3. AKTIFKAN KEMBALI CONTAINER CRUD (Ini yang bikin tabel muncul)
-    const crudView = document.getElementById('view-crud');
-    const searchContainer = document.getElementById('search-container');
+    const crudView = document.getElementById("view-crud");
+    const searchContainer = document.getElementById("search-container");
 
     if (crudView) {
-      crudView.classList.remove('hidden'); // Membuka pintu utama
-      crudView.style.visibility = 'visible'; // Memastikan terlihat
+      crudView.classList.remove("hidden"); // Membuka pintu utama
+      crudView.style.visibility = "visible"; // Memastikan terlihat
     }
-    if (searchContainer) searchContainer.classList.remove('hidden');
+    if (searchContainer) searchContainer.classList.remove("hidden");
 
     // 4. Update Header Judul
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = id.replace(/_/g, ' ').toUpperCase();
+    const titleEl = document.getElementById("cur-title");
+    if (titleEl) titleEl.innerText = id.replace(/_/g, " ").toUpperCase();
 
     this.syncSidebarUI(id);
 
@@ -450,28 +508,35 @@ const app = {
     }
   },
   renderSidebar() {
-    const list = document.getElementById('resource-list');
+    const list = document.getElementById("resource-list");
     if (!list) return;
 
     // Filter unik ID Tabel
-    const unique = [...new Map(this.allResources.map(item => [item.id, item])).values()];
+    const unique = [
+      ...new Map(this.allResources.map((item) => [item.id, item])).values(),
+    ];
 
-    list.innerHTML = unique.map(r => `
+    list.innerHTML = unique
+      .map(
+        (r) => `
           <button onclick="app.selectResource('${r.id}')" id="nav-${r.id}" 
             class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition-all text-left uppercase tracking-wider">
             <i class="fa-solid fa-table text-[10px] opacity-40"></i> <span>${r.id}</span>
           </button>
-        `).join('');
+        `
+      )
+      .join("");
   },
 
   // Tambahkan ke dalam objek app { ... }
 
-
-
-
-
   addDashboardWidgetConfig() {
-    this.dashboardConfigs.push({ name: 'Widget Baru', table: '', type: 'COUNT', column: '' });
+    this.dashboardConfigs.push({
+      name: "Widget Baru",
+      table: "",
+      type: "COUNT",
+      column: "",
+    });
     this.renderDashboardBuilder();
   },
   // --- RENDER DASHBOARD UTAMA BERDASARKAN CONFIG ---
@@ -479,61 +544,62 @@ const app = {
   resetViews() {
     // Daftar semua container view yang ada di HTML
     const views = [
-      'view-crud',
-      'view-app-studio',
-      'view-schema-explorer',
-      'view-dashboard',
-      'view-dashboard-builder', // Tambahkan ini agar tidak "nyangkut"
-      'automation-builder-section',
-      'view-permissions'
+      "view-crud",
+      "view-app-studio",
+      "view-schema-explorer",
+      "view-dashboard",
+      "view-dashboard-builder", // Tambahkan ini agar tidak "nyangkut"
+      "automation-builder-section",
+      "view-permissions",
     ];
 
-    views.forEach(v => {
+    views.forEach((v) => {
       const el = document.getElementById(v);
-      if (el) el.classList.add('hidden');
+      if (el) el.classList.add("hidden");
     });
 
     // Sembunyikan juga elemen header yang spesifik untuk tabel
-    document.getElementById('search-container')?.classList.add('hidden');
-    document.getElementById('btn-add')?.classList.add('hidden');
-    document.getElementById('view-mode')?.classList.add('hidden');
+    document.getElementById("search-container")?.classList.add("hidden");
+    document.getElementById("btn-add")?.classList.add("hidden");
+    document.getElementById("view-mode")?.classList.add("hidden");
   },
 
   syncSidebarUI(id) {
     // 1. Bersihkan semua status active dari semua tombol navigasi
-    document.querySelectorAll('.nav-btn, aside nav button').forEach(btn => {
-      btn.classList.remove('sidebar-active', 'bg-[#1e293b]', 'text-white');
-      btn.classList.add('text-slate-400');
+    document.querySelectorAll(".nav-btn, aside nav button").forEach((btn) => {
+      btn.classList.remove("sidebar-active", "bg-[#1e293b]", "text-white");
+      btn.classList.add("text-slate-400");
     });
 
     // 2. Cari tombol yang diklik berdasarkan ID-nya
     // id bisa berupa: 'dashboard', 'dashboard-builder', 'app-studio', atau 'NAMA_TABEL'
-    const targetId = `nav-${id.toLowerCase().replace(/_/g, '-')}`;
+    const targetId = `nav-${id.toLowerCase().replace(/_/g, "-")}`;
     const activeBtn = document.getElementById(targetId);
 
     if (activeBtn) {
-      activeBtn.classList.add('sidebar-active', 'bg-[#1e293b]', 'text-white');
-      activeBtn.classList.remove('text-slate-400');
+      activeBtn.classList.add("sidebar-active", "bg-[#1e293b]", "text-white");
+      activeBtn.classList.remove("text-slate-400");
     }
 
     // 3. Update Judul di Header
     const titleMap = {
-      'dashboard': 'Dashboard Overview',
-      'dashboard-builder': 'Dashboard Architect',
-      'app-studio': 'Table Architect',
-      'schema-explorer': 'Schema Explorer'
+      dashboard: "Dashboard Overview",
+      "dashboard-builder": "Dashboard Architect",
+      "app-studio": "Table Architect",
+      "schema-explorer": "Schema Explorer",
     };
 
-    document.getElementById('cur-title').innerText = titleMap[id] || id.replace(/_/g, ' ').toUpperCase();
+    document.getElementById("cur-title").innerText =
+      titleMap[id] || id.replace(/_/g, " ").toUpperCase();
   },
 
   // --- AUTOMATION ENGINE ---
   showAutomationBuilder: function () {
     this.resetViews();
-    const section = document.getElementById('automation-builder-section');
+    const section = document.getElementById("automation-builder-section");
     if (section) {
-      section.classList.remove('hidden');
-      document.getElementById('cur-title').innerText = "Automation Engine";
+      section.classList.remove("hidden");
+      document.getElementById("cur-title").innerText = "Automation Engine";
       this.renderAutomationBuilder();
     } else {
       console.error("ID 'automation-builder-section' tidak ditemukan di HTML");
@@ -543,24 +609,24 @@ const app = {
   hideAllSections: function () {
     // Daftar semua ID section yang ada di HTML juragan
     const sections = [
-      'view-crud',
-      'view-app-studio',
-      'view-schema-explorer',
-      'view-dashboard',
-      'view-dashboard-builder',
-      'automation-builder-section'
+      "view-crud",
+      "view-app-studio",
+      "view-schema-explorer",
+      "view-dashboard",
+      "view-dashboard-builder",
+      "automation-builder-section",
     ];
 
-    sections.forEach(id => {
+    sections.forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
+      if (el) el.classList.add("hidden");
     });
 
     // Sembunyikan elemen header tambahan jika ada
-    const search = document.getElementById('search-container');
-    const btnAdd = document.getElementById('btn-add');
-    if (search) search.classList.add('hidden');
-    if (btnAdd) btnAdd.classList.add('hidden');
+    const search = document.getElementById("search-container");
+    const btnAdd = document.getElementById("btn-add");
+    if (search) search.classList.add("hidden");
+    if (btnAdd) btnAdd.classList.add("hidden");
   },
   // --- PERBAIKAN TRIGGER LOOKUP & AUTOFILL (VERSI JURAGAN SAAS) ---
   async triggerLookup(fieldId, selectedValue) {
@@ -568,13 +634,15 @@ const app = {
     if (!s || !selectedValue) return;
 
     // 1. Identifikasi Tabel Sumber (Tabel Kopi)
-    const tableSource = s.lookup ? s.lookup.table : (s.autoTable || '');
+    const tableSource = s.lookup ? s.lookup.table : s.autoTable || "";
     const keyField = s.lookup ? s.lookup.field : fieldId;
     let sourceData = this.resourceCache[tableSource];
 
     if (sourceData) {
       // 2. Cari baris kopi yang dipilih
-      const row = sourceData.find(r => String(r[keyField]) === String(selectedValue));
+      const row = sourceData.find(
+        (r) => String(r[keyField]) === String(selectedValue)
+      );
 
       if (row) {
         // 3. Loop semua kolom di form Penjualan
@@ -582,14 +650,18 @@ const app = {
           const cfg = this.schema[key];
 
           // 4. CEK: Apakah kolom ini adalah AUTOFILL yang dipicu oleh fieldId ini?
-          if (cfg.autoTrigger === fieldId || (cfg.type === 'AUTOFILL' && cfg.autoTrigger === fieldId)) {
-
+          if (
+            cfg.autoTrigger === fieldId ||
+            (cfg.type === "AUTOFILL" && cfg.autoTrigger === fieldId)
+          ) {
             // AMBIL NILAI: Gunakan mapping autoCol (misal: 'id') atau default ke 'key'
             const sourceKey = cfg.autoCol || key;
             const valueToFill = row[sourceKey];
 
             if (valueToFill !== undefined) {
-              console.log(`[Autofill Success] Mengisi ${key} dengan ${valueToFill}`);
+              console.log(
+                `[Autofill Success] Mengisi ${key} dengan ${valueToFill}`
+              );
               this.updateFieldValue(key, valueToFill);
             }
           }
@@ -605,16 +677,16 @@ const app = {
   async openAccessControl() {
     this.resetViews();
 
-    const view = document.getElementById('view-permissions');
-    const container = document.getElementById('permissions-content-area');
-    if (view) view.classList.remove('hidden');
-    document.getElementById('cur-title').innerText = "ACCESS CONTROL";
+    const view = document.getElementById("view-permissions");
+    const container = document.getElementById("permissions-content-area");
+    if (view) view.classList.remove("hidden");
+    document.getElementById("cur-title").innerText = "ACCESS CONTROL";
 
     // Tampilkan loading sebentar biar user tahu aplikasi sedang bekerja
     container.innerHTML = `<div class="p-20 text-center font-black opacity-20 animate-pulse tracking-[0.5em]">SYNCING SECURITY...</div>`;
 
     // AMBIL DATA LIVE DARI GOOGLE SHEETS
-    const res = await this.get({ action: 'read', table: 'config_permissions' });
+    const res = await this.get({ action: "read", table: "config_permissions" });
 
     if (res.success && res.rows) {
       this.renderPermissions(res.rows);
@@ -625,13 +697,15 @@ const app = {
 
   // 2. Fungsi Renderer (Desain "Security Guard" Juragan)
   renderPermissions(data) {
-    const container = document.getElementById('permissions-content-area');
+    const container = document.getElementById("permissions-content-area");
     if (!container) return;
 
     // Helper agar tidak case-sensitive terhadap nama kolom di Sheets
     const getVal = (obj, key) => {
-      const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-      return obj[foundKey] !== undefined ? obj[foundKey] : '';
+      const foundKey = Object.keys(obj).find(
+        (k) => k.toLowerCase() === key.toLowerCase()
+      );
+      return obj[foundKey] !== undefined ? obj[foundKey] : "";
     };
 
     let html = `
@@ -657,29 +731,49 @@ const app = {
                 <tbody class="divide-y divide-slate-100">
         `;
 
-    data.forEach(p => {
-      const can = (val) => (String(val).toUpperCase() === 'TRUE')
-        ? '<div class="w-6 h-6 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-100"><i class="fa-solid fa-check text-[10px]"></i></div>'
-        : '<div class="w-6 h-6 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center mx-auto border border-slate-100"><i class="fa-solid fa-xmark text-[10px]"></i></div>';
+    data.forEach((p) => {
+      const can = (val) =>
+        String(val).toUpperCase() === "TRUE"
+          ? '<div class="w-6 h-6 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-100"><i class="fa-solid fa-check text-[10px]"></i></div>'
+          : '<div class="w-6 h-6 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center mx-auto border border-slate-100"><i class="fa-solid fa-xmark text-[10px]"></i></div>';
 
-      const role = getVal(p, 'role');
-      const policy = getVal(p, 'ownership_policy');
+      const role = getVal(p, "role");
+      const policy = getVal(p, "ownership_policy");
 
       html += `
             <tr class="hover:bg-slate-50/50 transition-colors group">
               <td class="px-8 py-5">
-                <span class="text-sm font-black text-slate-800 uppercase tracking-tight group-hover:text-blue-600">${getVal(p, 'resource')}</span>
+                <span class="text-sm font-black text-slate-800 uppercase tracking-tight group-hover:text-blue-600">${getVal(
+                  p,
+                  "resource"
+                )}</span>
               </td>
               <td class="px-6 py-5 text-center">
-                <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${role === 'admin' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}">${role}</span>
+                <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${
+                  role === "admin"
+                    ? "bg-red-50 text-red-600"
+                    : "bg-blue-50 text-blue-600"
+                }">${role}</span>
               </td>
-              <td class="px-4 py-5 text-center">${can(getVal(p, 'can_browse'))}</td>
-              <td class="px-4 py-5 text-center">${can(getVal(p, 'can_add'))}</td>
-              <td class="px-4 py-5 text-center">${can(getVal(p, 'can_edit'))}</td>
-              <td class="px-4 py-5 text-center">${can(getVal(p, 'can_delete'))}</td>
+              <td class="px-4 py-5 text-center">${can(
+                getVal(p, "can_browse")
+              )}</td>
+              <td class="px-4 py-5 text-center">${can(
+                getVal(p, "can_add")
+              )}</td>
+              <td class="px-4 py-5 text-center">${can(
+                getVal(p, "can_edit")
+              )}</td>
+              <td class="px-4 py-5 text-center">${can(
+                getVal(p, "can_delete")
+              )}</td>
               <td class="px-8 py-5">
                 <div class="flex items-center gap-2">
-                  <i class="fa-solid ${policy === 'ALL' ? 'fa-globe-asia text-blue-400' : 'fa-user-lock text-orange-400'} text-xs"></i>
+                  <i class="fa-solid ${
+                    policy === "ALL"
+                      ? "fa-globe-asia text-blue-400"
+                      : "fa-user-lock text-orange-400"
+                  } text-xs"></i>
                   <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">${policy}</span>
                 </div>
               </td>
@@ -690,26 +784,26 @@ const app = {
     container.innerHTML = html;
   },
 
-
-
   openDashboardBuilder() {
     this.resetViews();
-    this.currentView = 'dashboard-builder';
+    this.currentView = "dashboard-builder";
 
     // Panggil sync dengan ID yang sesuai dengan ID tombol di HTML (tanpa prefix nav-)
-    this.syncSidebarUI('dashboard-builder');
+    this.syncSidebarUI("dashboard-builder");
 
-    document.getElementById('view-dashboard-builder').classList.remove('hidden');
+    document
+      .getElementById("view-dashboard-builder")
+      .classList.remove("hidden");
     this.renderDashboardBuilder();
   },
 
   // 3. Tambah Widget Baru (Kosong)
   addDashboardWidgetConfig: function () {
     this.dashboardConfigs.push({
-      name: 'Widget Baru',
-      table: '',
-      type: 'COUNT',
-      column: ''
+      name: "Widget Baru",
+      table: "",
+      type: "COUNT",
+      column: "",
     });
     this.renderDashboardBuilder();
   },
@@ -722,52 +816,52 @@ const app = {
     }
   },
 
-
-
-
-
   async saveAutomationRule() {
-    const btn = event.target.closest('button');
+    const btn = event.target.closest("button");
     const originalText = btn.innerHTML;
 
     // 1. Ambil Data dari Form Automation
-    const thenValRaw = document.getElementById('then-value').value;
+    const thenValRaw = document.getElementById("then-value").value;
 
     // SOLUSI: Jika diawali + atau -, tambahkan kutip satu agar Google Sheets membacanya sebagai TEXT
-    const safeThenValue = (thenValRaw.startsWith('+') || thenValRaw.startsWith('-'))
-      ? "'" + thenValRaw
-      : thenValRaw;
+    const safeThenValue =
+      thenValRaw.startsWith("+") || thenValRaw.startsWith("-")
+        ? "'" + thenValRaw
+        : thenValRaw;
 
     const config = {
-      event: document.getElementById('auto-event').value,
-      source_table: document.getElementById('auto-table').value,
-      if_field: document.getElementById('if-field').value,
-      if_op: document.getElementById('if-op').value,
-      if_value: document.getElementById('if-value').value,
-      target_table: document.getElementById('then-table').value,
-      then_field: document.getElementById('then-field').value,
-      then_mode: document.getElementById('then-mode').value,
+      event: document.getElementById("auto-event").value,
+      source_table: document.getElementById("auto-table").value,
+      if_field: document.getElementById("if-field").value,
+      if_op: document.getElementById("if-op").value,
+      if_value: document.getElementById("if-value").value,
+      target_table: document.getElementById("then-table").value,
+      then_field: document.getElementById("then-field").value,
+      then_mode: document.getElementById("then-mode").value,
       then_value: safeThenValue, // Gunakan yang sudah diproteksi
-      match_field: document.getElementById('match-field').value,
-      match_source: document.getElementById('match-source').value
+      match_field: document.getElementById("match-field").value,
+      match_source: document.getElementById("match-source").value,
     };
 
     // 2. Validasi Sederhana
     if (!config.source_table || !config.target_table || !config.match_field) {
-      alert("Waduh Juragan, Tabel Sumber, Target, dan Matching Logic wajib diisi!");
+      alert(
+        "Waduh Juragan, Tabel Sumber, Target, dan Matching Logic wajib diisi!"
+      );
       return;
     }
 
     // 3. Kirim ke Backend
-    btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> DEPLOYING...';
+    btn.innerHTML =
+      '<i class="fa-solid fa-spinner animate-spin"></i> DEPLOYING...';
     btn.disabled = true;
 
     try {
       // Pastikan table 'config_automations' atau sesuai nama di BE juragan
       const res = await this.post({
-        action: 'create_automation',
-        table: 'config_automations', // Pastikan nama tabel sinkron
-        data: config
+        action: "create_automation",
+        table: "config_automations", // Pastikan nama tabel sinkron
+        data: config,
       });
 
       if (res.success) {
@@ -790,11 +884,15 @@ const app = {
     let schema = this.schemaCache[tableName]?.schema;
 
     if (!schema) {
-      const targetId = type === 'source' ? 'if-field' : 'then-field';
+      const targetId = type === "source" ? "if-field" : "then-field";
       const el = document.getElementById(targetId);
-      if (el) el.innerHTML = '<option>Loading Fields...</option>';
+      if (el) el.innerHTML = "<option>Loading Fields...</option>";
 
-      const res = await this.get({ action: 'read', table: tableName, limit: 1 });
+      const res = await this.get({
+        action: "read",
+        table: tableName,
+        limit: 1,
+      });
       if (res.success && res.schema) {
         this.schemaCache[tableName] = { schema: res.schema };
         schema = res.schema;
@@ -808,33 +906,39 @@ const app = {
     const fields = Object.keys(schema);
 
     const makeOptions = (withBrackets = false) => {
-      return fields.map(f => {
-        // Ambil label asli dari metadata, jika tidak ada pakai nama field asli
-        const label = schema[f]?.label || f;
-        const val = withBrackets ? `{${f}}` : f;
+      return fields
+        .map((f) => {
+          // Ambil label asli dari metadata, jika tidak ada pakai nama field asli
+          const label = schema[f]?.label || f;
+          const val = withBrackets ? `{${f}}` : f;
 
-        // Tampilan murni: Nama Label [nama_field] 
-        // Contoh: JENIS KOPI [jeniskopi]
-        return `<option value="${val}">${label} [${f}]</option>`;
-      }).join('');
+          // Tampilan murni: Nama Label [nama_field]
+          // Contoh: JENIS KOPI [jeniskopi]
+          return `<option value="${val}">${label} [${f}]</option>`;
+        })
+        .join("");
     };
 
     // 3. Distribusi ke Dropdown
-    if (type === 'source') {
-      document.getElementById('if-field').innerHTML = `<option value="">-- PILIH FIELD --</option>` + makeOptions();
-      document.getElementById('match-source').innerHTML = `<option value="">-- FIELD SUMBER --</option>` + makeOptions(true);
+    if (type === "source") {
+      document.getElementById("if-field").innerHTML =
+        `<option value="">-- PILIH FIELD --</option>` + makeOptions();
+      document.getElementById("match-source").innerHTML =
+        `<option value="">-- FIELD SUMBER --</option>` + makeOptions(true);
     } else {
-      document.getElementById('then-field').innerHTML = `<option value="">-- FIELD TARGET --</option>` + makeOptions();
-      document.getElementById('match-field').innerHTML = `<option value="">-- FIELD TARGET --</option>` + makeOptions();
+      document.getElementById("then-field").innerHTML =
+        `<option value="">-- FIELD TARGET --</option>` + makeOptions();
+      document.getElementById("match-field").innerHTML =
+        `<option value="">-- FIELD TARGET --</option>` + makeOptions();
     }
 
     console.log(`✅ Dropdown ${tableName} Updated secara murni!`);
   },
   renderAutomationBuilder: function () {
-    const container = document.getElementById('automation-builder');
+    const container = document.getElementById("automation-builder");
     if (!container) return;
 
-    const tables = (this.allResources || []).map(r => r.id);
+    const tables = (this.allResources || []).map((r) => r.id);
 
     container.innerHTML = `
 <div class="max-w-6xl mx-auto space-y-10 p-10 bg-white rounded-[3rem] shadow-2xl animate-fade-in text-left">
@@ -861,7 +965,7 @@ const app = {
       
       <select id="auto-table" onchange="app.updateAutoFields('source', this.value)" class="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold ring-2 ring-blue-50 focus:ring-blue-500 outline-none">
         <option value="">-- PILIH TABEL SUMBER --</option>
-        ${tables.map(t => `<option value="${t}">${t}</option>`).join('')}
+        ${tables.map((t) => `<option value="${t}">${t}</option>`).join("")}
       </select>
 
       <div class="pt-4 border-t border-slate-100">
@@ -882,7 +986,7 @@ const app = {
       <h4 class="font-black text-[11px] uppercase tracking-widest text-rose-600 italic">2. THEN (Target Action)</h4>
       <select id="then-table" onchange="app.updateAutoFields('target', this.value)" class="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold ring-2 ring-rose-50 focus:ring-rose-500 outline-none">
         <option value="">-- PILIH TABEL TARGET --</option>
-        ${tables.map(t => `<option value="${t}">${t}</option>`).join('')}
+        ${tables.map((t) => `<option value="${t}">${t}</option>`).join("")}
       </select>
 
       <select id="then-field" class="w-full p-4 bg-slate-50 rounded-2xl text-xs font-bold">
@@ -933,25 +1037,29 @@ const app = {
   async saveDashboardConfig() {
     try {
       // 1. Ambil data dari tabel
-      const resRead = await this.get({ action: 'read', table: 'config_dashboard' });
+      const resRead = await this.get({
+        action: "read",
+        table: "config_dashboard",
+      });
 
       // 2. Cari baris MANA SAJA yang penting ada (karena isinya pasti cuma config dashboard)
-      const existingRow = resRead.success && resRead.rows.length > 0 ? resRead.rows[0] : null;
+      const existingRow =
+        resRead.success && resRead.rows.length > 0 ? resRead.rows[0] : null;
 
       // 3. Jika ada baris (apapun ID-nya), kita UPDATE. Jika kosong, kita CREATE.
-      const actionToDo = existingRow ? 'update' : 'create';
+      const actionToDo = existingRow ? "update" : "create";
 
       // 4. Jika update, gunakan ID asli yang dari BE (si SK-XXXX itu)
-      const targetId = existingRow ? existingRow.id : 'USER_DASHBOARD_1';
+      const targetId = existingRow ? existingRow.id : "USER_DASHBOARD_1";
 
       const payload = {
         action: actionToDo,
-        table: 'config_dashboard',
+        table: "config_dashboard",
         data: {
           id: targetId,
           config_json: JSON.stringify(this.dashboardConfigs),
-          updated_at: new Date().toISOString()
-        }
+          updated_at: new Date().toISOString(),
+        },
       };
 
       console.log(`📡 Menembak ID: ${targetId} dengan Action: ${actionToDo}`);
@@ -960,7 +1068,9 @@ const app = {
       if (res.success) {
         alert("✅ Berhasil! Sekarang datanya tidak akan duplikat lagi.");
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   },
 
   updateWidgetConfig(index, key, val) {
@@ -973,7 +1083,7 @@ const app = {
   },
   // Fungsi khusus untuk update tabel agar skema kolomnya ikut ter-fetch
   async loadDashboardConfigs() {
-    const res = await this.get({ action: 'read', table: 'config_dashboard' });
+    const res = await this.get({ action: "read", table: "config_dashboard" });
     if (res.success && res.rows.length > 0) {
       this.dashboardConfigs = JSON.parse(res.rows[0].config_json);
     } else {
@@ -985,32 +1095,35 @@ const app = {
   // Tambahkan helper ini jika belum ada untuk gonta-ganti menu
   hideAllViews: function () {
     const views = [
-      'view-crud', 'view-app-studio', 'view-schema-explorer',
-      'view-dashboard', 'automation-builder-section',
-      'view-dashboard-builder', 'view-permissions'
+      "view-crud",
+      "view-app-studio",
+      "view-schema-explorer",
+      "view-dashboard",
+      "automation-builder-section",
+      "view-dashboard-builder",
+      "view-permissions",
     ];
-    views.forEach(id => {
+    views.forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
+      if (el) el.classList.add("hidden");
     });
   },
-
 
   updateWidgetConfig: function (index, key, val) {
     // Simpan perubahan ke state
     this.dashboardConfigs[index][key] = val;
 
     // Jika yang diubah adalah 'type', render ulang karena UI berubah drastis
-    if (key === 'type') {
+    if (key === "type") {
       this.renderDashboardBuilder();
     }
-    // Catatan: Untuk input teks (name, formula, unit), 
+    // Catatan: Untuk input teks (name, formula, unit),
     // kita TIDAK render ulang di sini agar kursor tidak mental.
   },
 
   updateWidgetTable: function (index, tableName) {
     this.dashboardConfigs[index].table = tableName;
-    this.dashboardConfigs[index].column = ''; // Reset kolom karena tabel ganti
+    this.dashboardConfigs[index].column = ""; // Reset kolom karena tabel ganti
     this.renderDashboardBuilder(); // Render ulang agar dropdown kolom muncul
   },
 
@@ -1020,12 +1133,14 @@ const app = {
     }
 
     // Berikan kode otomatis (A, B, C...)
-    const nextCode = String.fromCharCode(65 + this.dashboardConfigs[widgetIndex].vars.length);
+    const nextCode = String.fromCharCode(
+      65 + this.dashboardConfigs[widgetIndex].vars.length
+    );
 
     this.dashboardConfigs[widgetIndex].vars.push({
       code: nextCode,
-      table: '',
-      col: ''
+      table: "",
+      col: "",
     });
 
     this.renderDashboardBuilder();
@@ -1035,7 +1150,7 @@ const app = {
     this.dashboardConfigs[wIdx].vars[vIdx][key] = val;
 
     // Jika ganti tabel, render ulang untuk ambil list kolomnya
-    if (key === 'table') {
+    if (key === "table") {
       this.renderDashboardBuilder();
     }
   },
@@ -1053,33 +1168,50 @@ const app = {
   },
 
   renderDashboardBuilder: function () {
-    const container = document.getElementById('db-builder-container');
+    const container = document.getElementById("db-builder-container");
     if (!container) return;
 
     // Starter jika kosong
     if (this.dashboardConfigs.length === 0) {
       this.dashboardConfigs.push({
-        name: '', table: '', type: 'COUNT', column: '',
-        vars: [], formula: '', color: 'slate', unit: 'Rp', icon: 'fa-wallet'
+        name: "",
+        table: "",
+        type: "COUNT",
+        column: "",
+        vars: [],
+        formula: "",
+        color: "slate",
+        unit: "Rp",
+        icon: "fa-wallet",
       });
     }
 
-    container.innerHTML = this.dashboardConfigs.map((conf, index) => {
-      // 1. Persiapan Data (Cache & Safety)
-      const schema = this.schemaCache[conf.table]?.schema || {};
-      const columnOptions = Object.keys(schema).map(col =>
-        `<option value="${col}" ${conf.column === col ? 'selected' : ''}>${col.toUpperCase().replace(/_/g, ' ')}</option>`
-      ).join('');
+    container.innerHTML = this.dashboardConfigs
+      .map((conf, index) => {
+        // 1. Persiapan Data (Cache & Safety)
+        const schema = this.schemaCache[conf.table]?.schema || {};
+        const columnOptions = Object.keys(schema)
+          .map(
+            (col) =>
+              `<option value="${col}" ${
+                conf.column === col ? "selected" : ""
+              }>${col.toUpperCase().replace(/_/g, " ")}</option>`
+          )
+          .join("");
 
-      if (!conf.vars) conf.vars = [];
+        if (!conf.vars) conf.vars = [];
 
-      return `
+        return `
       <div class="p-8 bg-white rounded-[3rem] border border-slate-200 mb-8 shadow-sm relative overflow-hidden animate-fade-in">
         
         <div class="flex justify-between items-center mb-8">
           <div class="flex items-center gap-4 w-full">
-            <div class="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-xs shadow-lg">${index + 1}</div>
-            <input type="text" value="${conf.name}" placeholder="Nama Widget (Contoh: Sisa Stok)"
+            <div class="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-xs shadow-lg">${
+              index + 1
+            }</div>
+            <input type="text" value="${
+              conf.name
+            }" placeholder="Nama Widget (Contoh: Sisa Stok)"
               onchange="app.updateWidgetConfig(${index}, 'name', this.value)"
               class="bg-transparent border-none font-black text-slate-800 text-lg outline-none w-2/3 uppercase tracking-tighter">
           </div>
@@ -1093,23 +1225,42 @@ const app = {
             <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Metode Hitung</label>
             <select onchange="app.updateWidgetConfig(${index}, 'type', this.value); app.renderDashboardBuilder();" 
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20">
-              <option value="COUNT" ${conf.type === 'COUNT' ? 'selected' : ''}>COUNT (Hitung Baris)</option>
-              <option value="SUM" ${conf.type === 'SUM' ? 'selected' : ''}>SUM (Total Angka)</option>
-              <option value="FORMULA" ${conf.type === 'FORMULA' ? 'selected' : ''}>FORMULA (Variabel)</option>
-              <option value="URGENCY" ${conf.type === 'URGENCY' ? 'selected' : ''}>URGENCY (Stok Kritis)</option>
+              <option value="COUNT" ${
+                conf.type === "COUNT" ? "selected" : ""
+              }>COUNT (Hitung Baris)</option>
+              <option value="SUM" ${
+                conf.type === "SUM" ? "selected" : ""
+              }>SUM (Total Angka)</option>
+              <option value="FORMULA" ${
+                conf.type === "FORMULA" ? "selected" : ""
+              }>FORMULA (Variabel)</option>
+              <option value="URGENCY" ${
+                conf.type === "URGENCY" ? "selected" : ""
+              }>URGENCY (Stok Kritis)</option>
             </select>
           </div>
 
-          ${conf.type !== 'FORMULA' ? `
+          ${
+            conf.type !== "FORMULA"
+              ? `
             <div>
               <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Sumber Tabel</label>
               <select onchange="app.updateWidgetTable(${index}, this.value)" 
                 class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20 text-blue-600">
                 <option value="">-- Pilih Tabel --</option>
-                ${this.allResources.map(r => `<option value="${r.id}" ${conf.table === r.id ? 'selected' : ''}>${r.id.toUpperCase()}</option>`).join('')}
+                ${this.allResources
+                  .map(
+                    (r) =>
+                      `<option value="${r.id}" ${
+                        conf.table === r.id ? "selected" : ""
+                      }>${r.id.toUpperCase()}</option>`
+                  )
+                  .join("")}
               </select>
             </div>
-            <div class="${conf.type === 'COUNT' ? 'opacity-30 pointer-events-none' : ''}">
+            <div class="${
+              conf.type === "COUNT" ? "opacity-30 pointer-events-none" : ""
+            }">
               <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Kolom Target</label>
               <select onchange="app.updateWidgetConfig(${index}, 'column', this.value)" 
                 class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20">
@@ -1117,16 +1268,20 @@ const app = {
                 ${columnOptions}
               </select>
             </div>
-          ` : `
+          `
+              : `
             <div class="md:col-span-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center">
               <p class="text-[10px] font-bold text-blue-600 uppercase tracking-tight">
                 <i class="fa-solid fa-circle-info mr-2"></i> Mode Formula Aktif: Kelola variabel di panel bawah.
               </p>
             </div>
-          `}
+          `
+          }
         </div>
 
-        ${conf.type === 'FORMULA' ? `
+        ${
+          conf.type === "FORMULA"
+            ? `
           <div class="mb-8 p-8 bg-blue-50/50 rounded-[2.5rem] border border-blue-100 animate-slide-up">
             <div class="flex justify-between items-center mb-6">
               <h5 class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Kalkulasi Lintas Tabel</h5>
@@ -1136,49 +1291,85 @@ const app = {
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              ${conf.vars.map((v, vIdx) => `
+              ${conf.vars
+                .map(
+                  (v, vIdx) => `
                 <div class="bg-white p-4 rounded-2xl border border-blue-100 relative group shadow-sm">
                   <div class="flex gap-2 mb-2">
-                    <input type="text" value="${v.code}" onchange="app.updateVar(${index}, ${vIdx}, 'code', this.value)" 
+                    <input type="text" value="${
+                      v.code
+                    }" onchange="app.updateVar(${index}, ${vIdx}, 'code', this.value)" 
                       class="w-10 p-2 bg-slate-100 rounded-lg font-black text-[10px] text-center uppercase outline-none">
                     <select onchange="app.updateVar(${index}, ${vIdx}, 'table', this.value)" 
                       class="flex-1 p-2 bg-slate-50 border-none rounded-lg text-[9px] font-bold outline-none text-blue-600">
                       <option value="">Pilih Tabel...</option>
-                      ${this.allResources.map(r => `<option value="${r.id}" ${v.table === r.id ? 'selected' : ''}>${r.id.toUpperCase()}</option>`).join('')}
+                      ${this.allResources
+                        .map(
+                          (r) =>
+                            `<option value="${r.id}" ${
+                              v.table === r.id ? "selected" : ""
+                            }>${r.id.toUpperCase()}</option>`
+                        )
+                        .join("")}
                     </select>
                   </div>
                   <select onchange="app.updateVar(${index}, ${vIdx}, 'col', this.value)" 
                     class="w-full p-2 bg-slate-50 border-none rounded-lg text-[9px] font-bold outline-none">
                     <option value="">Pilih Kolom...</option>
-                    ${Object.keys(this.schemaCache[v.table]?.schema || {}).map(c => `<option value="${c}" ${v.col === c ? 'selected' : ''}>${c.toUpperCase()}</option>`).join('')}
+                    ${Object.keys(this.schemaCache[v.table]?.schema || {})
+                      .map(
+                        (c) =>
+                          `<option value="${c}" ${
+                            v.col === c ? "selected" : ""
+                          }>${c.toUpperCase()}</option>`
+                      )
+                      .join("")}
                   </select>
                   <button onclick="app.removeVar(${index}, ${vIdx})" class="absolute -right-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg">
                     <i class="fa-solid fa-xmark"></i>
                   </button>
                 </div>
-              `).join('')}
+              `
+                )
+                .join("")}
             </div>
 
             <div>
               <label class="block text-[9px] font-black text-blue-400 uppercase mb-2 ml-1 tracking-widest">Rumus Matematika</label>
-              <input type="text" value="${conf.formula || ''}" placeholder="Contoh: ({A} - {B}) / {A} * 100" 
+              <input type="text" value="${
+                conf.formula || ""
+              }" placeholder="Contoh: ({A} - {B}) / {A} * 100" 
                 onchange="app.updateWidgetConfig(${index}, 'formula', this.value)"
                 class="w-full p-5 bg-white border-2 border-blue-200 rounded-2xl font-mono text-sm font-black text-blue-700 shadow-inner outline-none focus:border-blue-500 transition-all">
             </div>
           </div>
-        ` : ''}
+        `
+            : ""
+        }
 
         <div class="pt-8 border-t border-slate-50 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Visual Icon</label>
             <select onchange="app.updateWidgetConfig(${index}, 'icon', this.value)" 
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
-              <option value="fa-wallet" ${conf.icon === 'fa-wallet' ? 'selected' : ''}>💰 Keuangan / Saldo</option>
-              <option value="fa-cart-shopping" ${conf.icon === 'fa-cart-shopping' ? 'selected' : ''}>🛒 Penjualan / Transaksi</option>
-              <option value="fa-users" ${conf.icon === 'fa-users' ? 'selected' : ''}>👥 Pelanggan / User</option>
-              <option value="fa-box-archive" ${conf.icon === 'fa-box-archive' ? 'selected' : ''}>📦 Stok / Inventori</option>
-              <option value="fa-chart-line" ${conf.icon === 'fa-chart-line' ? 'selected' : ''}>📈 Tren Data</option>
-              <option value="fa-calculator" ${conf.icon === 'fa-calculator' ? 'selected' : ''}>🧮 Perhitungan</option>
+              <option value="fa-wallet" ${
+                conf.icon === "fa-wallet" ? "selected" : ""
+              }>💰 Keuangan / Saldo</option>
+              <option value="fa-cart-shopping" ${
+                conf.icon === "fa-cart-shopping" ? "selected" : ""
+              }>🛒 Penjualan / Transaksi</option>
+              <option value="fa-users" ${
+                conf.icon === "fa-users" ? "selected" : ""
+              }>👥 Pelanggan / User</option>
+              <option value="fa-box-archive" ${
+                conf.icon === "fa-box-archive" ? "selected" : ""
+              }>📦 Stok / Inventori</option>
+              <option value="fa-chart-line" ${
+                conf.icon === "fa-chart-line" ? "selected" : ""
+              }>📈 Tren Data</option>
+              <option value="fa-calculator" ${
+                conf.icon === "fa-calculator" ? "selected" : ""
+              }>🧮 Perhitungan</option>
             </select>
           </div>
 
@@ -1187,22 +1378,38 @@ const app = {
             <select onchange="app.updateWidgetConfig(${index}, 'color', this.value)" 
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
               <optgroup label="Standar">
-                <option value="slate" ${conf.color === 'slate' ? 'selected' : ''}>🌑 Dark Slate</option>
-                <option value="blue" ${conf.color === 'blue' ? 'selected' : ''}>🔷 Ocean Blue</option>
-                <option value="emerald" ${conf.color === 'emerald' ? 'selected' : ''}>🟢 Forest Green</option>
-                <option value="rose" ${conf.color === 'rose' ? 'selected' : ''}>🔴 Vivid Red</option>
+                <option value="slate" ${
+                  conf.color === "slate" ? "selected" : ""
+                }>🌑 Dark Slate</option>
+                <option value="blue" ${
+                  conf.color === "blue" ? "selected" : ""
+                }>🔷 Ocean Blue</option>
+                <option value="emerald" ${
+                  conf.color === "emerald" ? "selected" : ""
+                }>🟢 Forest Green</option>
+                <option value="rose" ${
+                  conf.color === "rose" ? "selected" : ""
+                }>🔴 Vivid Red</option>
               </optgroup>
               <optgroup label="Premium">
-                <option value="amber" ${conf.color === 'amber' ? 'selected' : ''}>🔶 Golden Amber</option>
-                <option value="violet" ${conf.color === 'violet' ? 'selected' : ''}>🟣 Royal Violet</option>
-                <option value="cyan" ${conf.color === 'cyan' ? 'selected' : ''}>💎 Crystal Cyan</option>
+                <option value="amber" ${
+                  conf.color === "amber" ? "selected" : ""
+                }>🔶 Golden Amber</option>
+                <option value="violet" ${
+                  conf.color === "violet" ? "selected" : ""
+                }>🟣 Royal Violet</option>
+                <option value="cyan" ${
+                  conf.color === "cyan" ? "selected" : ""
+                }>💎 Crystal Cyan</option>
               </optgroup>
             </select>
           </div>
 
           <div>
             <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Satuan Unit</label>
-            <input type="text" value="${conf.unit || 'Rp'}" placeholder="Rp / Pcs / %"
+            <input type="text" value="${
+              conf.unit || "Rp"
+            }" placeholder="Rp / Pcs / %"
               onchange="app.updateWidgetConfig(${index}, 'unit', this.value)"
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold text-center outline-none">
           </div>
@@ -1210,23 +1417,22 @@ const app = {
 
       </div>
     `;
-    }).join('');
+      })
+      .join("");
   },
-
-
 
   calculateAllWidgets: function () {
     if (!this.dashboardConfigs) return;
 
     // GUNAKAN resourceCache (sesuai properti di app juragan)
-    this.widgetResults = this.dashboardConfigs.map(conf => {
+    this.widgetResults = this.dashboardConfigs.map((conf) => {
       const data = this.resourceCache[conf.table] || [];
 
-      if (conf.type === 'COUNT') {
+      if (conf.type === "COUNT") {
         return data.length;
       }
 
-      if (conf.type === 'SUM') {
+      if (conf.type === "SUM") {
         return data.reduce((acc, row) => {
           const val = parseFloat(row[conf.column]) || 0;
           return acc + val;
@@ -1239,50 +1445,97 @@ const app = {
     console.log("📊 Hasil Perhitungan Dashboard:", this.widgetResults);
   },
 
-// --- CORE FUNCTIONS (FIXED FOR LICENSING SYSTEM) ---
-
-
-
-
+  // --- CORE FUNCTIONS (FIXED FOR LICENSING SYSTEM) ---
 
   openDashboard: async function () {
     this.resetViews();
-    const titleEl = document.getElementById('cur-title');
+    const titleEl = document.getElementById("cur-title");
     if (titleEl) titleEl.innerText = "LOADING DATA...";
 
-    document.getElementById('view-dashboard')?.classList.remove('hidden');
+    document.getElementById("view-dashboard")?.classList.remove("hidden");
 
     try {
       for (const conf of this.dashboardConfigs) {
-        if (conf.table && (!this.resourceCache[conf.table] || this.resourceCache[conf.table].length === 0)) {
+        if (
+          conf.table &&
+          (!this.resourceCache[conf.table] ||
+            this.resourceCache[conf.table].length === 0)
+        ) {
           console.log(`📡 Menarik data otomatis untuk: ${conf.table}`);
           this.currentTable = conf.table;
-          await this.loadResource(true); 
+          await this.loadResource(true);
         }
       }
 
       if (titleEl) titleEl.innerText = "DASHBOARD ANALYTICS";
       this.calculateAllWidgets();
       this.renderDashboard();
-
     } catch (err) {
       console.error("Gagal memuat dashboard:", err);
     }
   },
 
   renderDashboard: function () {
-    const container = document.getElementById('dashboard-container');
+    const container = document.getElementById("dashboard-container");
     if (!container) return;
 
     const colorMap = {
-      slate: { bg: 'bg-slate-900', glow: 'shadow-slate-500/20', grad: 'from-slate-800 to-slate-950', txt: 'text-slate-100', icon: 'bg-slate-700 text-slate-300' },
-      blue: { bg: 'bg-blue-600', glow: 'shadow-blue-500/40', grad: 'from-blue-500 to-blue-700', txt: 'text-white', icon: 'bg-blue-400/30 text-blue-100' },
-      emerald: { bg: 'bg-emerald-600', glow: 'shadow-emerald-500/40', grad: 'from-emerald-500 to-emerald-700', txt: 'text-white', icon: 'bg-emerald-400/30 text-emerald-100' },
-      rose: { bg: 'bg-rose-600', glow: 'shadow-rose-500/40', grad: 'from-rose-500 to-rose-700', txt: 'text-white', icon: 'bg-rose-400/30 text-rose-100' },
-      amber: { bg: 'bg-amber-500', glow: 'shadow-amber-500/40', grad: 'from-amber-400 to-amber-600', txt: 'text-white', icon: 'bg-amber-300/30 text-amber-100' },
-      violet: { bg: 'bg-violet-600', glow: 'shadow-violet-500/40', grad: 'from-violet-500 to-violet-700', txt: 'text-white', icon: 'bg-violet-400/30 text-violet-100' },
-      cyan: { bg: 'bg-cyan-500', glow: 'shadow-cyan-500/40', grad: 'from-cyan-400 to-cyan-600', txt: 'text-white', icon: 'bg-cyan-300/30 text-cyan-100' },
-      fuchsia: { bg: 'bg-fuchsia-600', glow: 'shadow-fuchsia-500/40', grad: 'from-fuchsia-500 to-fuchsia-700', txt: 'text-white', icon: 'bg-fuchsia-400/30 text-fuchsia-100' }
+      slate: {
+        bg: "bg-slate-900",
+        glow: "shadow-slate-500/20",
+        grad: "from-slate-800 to-slate-950",
+        txt: "text-slate-100",
+        icon: "bg-slate-700 text-slate-300",
+      },
+      blue: {
+        bg: "bg-blue-600",
+        glow: "shadow-blue-500/40",
+        grad: "from-blue-500 to-blue-700",
+        txt: "text-white",
+        icon: "bg-blue-400/30 text-blue-100",
+      },
+      emerald: {
+        bg: "bg-emerald-600",
+        glow: "shadow-emerald-500/40",
+        grad: "from-emerald-500 to-emerald-700",
+        txt: "text-white",
+        icon: "bg-emerald-400/30 text-emerald-100",
+      },
+      rose: {
+        bg: "bg-rose-600",
+        glow: "shadow-rose-500/40",
+        grad: "from-rose-500 to-rose-700",
+        txt: "text-white",
+        icon: "bg-rose-400/30 text-rose-100",
+      },
+      amber: {
+        bg: "bg-amber-500",
+        glow: "shadow-amber-500/40",
+        grad: "from-amber-400 to-amber-600",
+        txt: "text-white",
+        icon: "bg-amber-300/30 text-amber-100",
+      },
+      violet: {
+        bg: "bg-violet-600",
+        glow: "shadow-violet-500/40",
+        grad: "from-violet-500 to-violet-700",
+        txt: "text-white",
+        icon: "bg-violet-400/30 text-violet-100",
+      },
+      cyan: {
+        bg: "bg-cyan-500",
+        glow: "shadow-cyan-500/40",
+        grad: "from-cyan-400 to-cyan-600",
+        txt: "text-white",
+        icon: "bg-cyan-300/30 text-cyan-100",
+      },
+      fuchsia: {
+        bg: "bg-fuchsia-600",
+        glow: "shadow-fuchsia-500/40",
+        grad: "from-fuchsia-500 to-fuchsia-700",
+        txt: "text-white",
+        icon: "bg-fuchsia-400/30 text-fuchsia-100",
+      },
     };
 
     if (!this.dashboardConfigs || this.dashboardConfigs.length === 0) {
@@ -1290,109 +1543,155 @@ const app = {
       return;
     }
 
-    container.innerHTML = this.dashboardConfigs.map((conf, index) => {
-      const theme = colorMap[conf.color] || colorMap.slate;
-      const rawValue = (this.widgetResults && this.widgetResults[index] !== undefined) ? this.widgetResults[index] : 0;
-      const displayValue = typeof rawValue === 'number' ? rawValue.toLocaleString('id-ID') : rawValue;
+    container.innerHTML = this.dashboardConfigs
+      .map((conf, index) => {
+        const theme = colorMap[conf.color] || colorMap.slate;
+        const rawValue =
+          this.widgetResults && this.widgetResults[index] !== undefined
+            ? this.widgetResults[index]
+            : 0;
+        const displayValue =
+          typeof rawValue === "number"
+            ? rawValue.toLocaleString("id-ID")
+            : rawValue;
 
-      return `
+        return `
       <div class="relative group animate-fade-in">
-        <div class="absolute inset-0 ${theme.bg} rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40 transition-all duration-700"></div>
-        <div class="relative bg-gradient-to-br ${theme.grad} p-7 rounded-[2.5rem] ${theme.glow} shadow-2xl border border-white/10 overflow-hidden min-h-[220px] flex flex-col justify-between">
+        <div class="absolute inset-0 ${
+          theme.bg
+        } rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40 transition-all duration-700"></div>
+        <div class="relative bg-gradient-to-br ${
+          theme.grad
+        } p-7 rounded-[2.5rem] ${
+          theme.glow
+        } shadow-2xl border border-white/10 overflow-hidden min-h-[220px] flex flex-col justify-between">
           <div class="absolute top-0 right-0 -mr-4 -mt-4 w-32 h-32 bg-white/10 rounded-full blur-3xl"></div>
           <div class="absolute bottom-0 left-0 -ml-4 -mb-4 w-24 h-24 bg-black/10 rounded-full blur-2xl"></div>
           <div class="flex justify-between items-start relative z-10">
-            <div class="${theme.icon} w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10 group-hover:scale-110 transition-transform duration-500">
-              <i class="fa-solid ${conf.icon || 'fa-wallet'} text-xl"></i>
+            <div class="${
+              theme.icon
+            } w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10 group-hover:scale-110 transition-transform duration-500">
+              <i class="fa-solid ${conf.icon || "fa-wallet"} text-xl"></i>
             </div>
             <div class="bg-black/10 px-3 py-1 rounded-full backdrop-blur-sm border border-white/5">
-               <span class="text-[9px] font-black tracking-widest ${theme.txt} opacity-80 uppercase">${conf.unit || 'VAL'}</span>
+               <span class="text-[9px] font-black tracking-widest ${
+                 theme.txt
+               } opacity-80 uppercase">${conf.unit || "VAL"}</span>
             </div>
           </div>
           <div class="mt-6 relative z-10">
-            <h3 class="text-[10px] font-black tracking-[0.2em] mb-1 ${theme.txt} opacity-60 uppercase">${conf.name || 'Untitled Widget'}</h3>
-            <div class="flex items-baseline gap-1"><span class="text-4xl font-black tracking-tighter ${theme.txt} drop-shadow-md">${displayValue}</span></div>
+            <h3 class="text-[10px] font-black tracking-[0.2em] mb-1 ${
+              theme.txt
+            } opacity-60 uppercase">${conf.name || "Untitled Widget"}</h3>
+            <div class="flex items-baseline gap-1"><span class="text-4xl font-black tracking-tighter ${
+              theme.txt
+            } drop-shadow-md">${displayValue}</span></div>
           </div>
           <div class="mt-4 flex items-center justify-between relative z-10">
             <div class="flex items-center gap-2">
               <div class="w-2 h-2 rounded-full bg-white/40 animate-pulse"></div>
-              <span class="text-[8px] font-bold ${theme.txt} opacity-40 uppercase tracking-[0.15em]">${conf.type} ANALYSIS</span>
+              <span class="text-[8px] font-bold ${
+                theme.txt
+              } opacity-40 uppercase tracking-[0.15em]">${
+          conf.type
+        } ANALYSIS</span>
             </div>
-            <i class="fa-solid fa-arrow-up-right-dots text-[10px] ${theme.txt} opacity-20 group-hover:opacity-100 transition-opacity"></i>
+            <i class="fa-solid fa-arrow-up-right-dots text-[10px] ${
+              theme.txt
+            } opacity-20 group-hover:opacity-100 transition-opacity"></i>
           </div>
         </div>
       </div>`;
-    }).join('');
+      })
+      .join("");
   },
 
   filterTable(query) {
     const searchTerm = query.toLowerCase();
     const rawData = this.resourceCache[this.currentTable] || [];
-    if (!searchTerm) { this.renderTable(rawData); return; }
-    const filtered = rawData.filter(row => Object.values(row).some(val => String(val).toLowerCase().includes(searchTerm)));
+    if (!searchTerm) {
+      this.renderTable(rawData);
+      return;
+    }
+    const filtered = rawData.filter((row) =>
+      Object.values(row).some((val) =>
+        String(val).toLowerCase().includes(searchTerm)
+      )
+    );
     this.renderTable(filtered);
   },
 
-// PERBAIKAN: Pembersihan ID Sheet dari URL
-sheet: (function() {
-        const raw = localStorage.getItem('sk_sheet');
-        if (!raw) return null;
-        
-        // Jika isinya URL (ada teks /d/), kita potong ambil tengahnya saja
-        if (raw.includes('/d/')) {
-          return raw.split('/d/')[1].split('/')[0];
-        }
-        
-        // Jika sudah ID bersih, langsung kembalikan
-        return raw;
-      })(),
+  // PERBAIKAN: Pembersihan ID Sheet dari URL
+  sheet: (function () {
+    const raw = localStorage.getItem("sk_sheet");
+    if (!raw) return null;
 
+    // Jika isinya URL (ada teks /d/), kita potong ambil tengahnya saja
+    if (raw.includes("/d/")) {
+      return raw.split("/d/")[1].split("/")[0];
+    }
 
+    // Jika sudah ID bersih, langsung kembalikan
+    return raw;
+  })(),
 
-// Helper untuk reset tombol jika gagal (Agar kode tidak berulang)
-resetSaveButton(btn) {
-  this.isSubmitting = false;
-  if (btn) {
-    btn.disabled = false;
-    btn.innerText = "COMMIT DATA";
-    btn.classList.remove('opacity-50', 'cursor-not-allowed');
-  }
-},
-  
+  // Helper untuk reset tombol jika gagal (Agar kode tidak berulang)
+  resetSaveButton(btn) {
+    this.isSubmitting = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "COMMIT DATA";
+      btn.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+  },
+
   openAppStudio() {
     this.resetViews();
-    this.currentTable = 'APP_STUDIO';
-    this.currentView = 'studio'; // Update state view
+    this.currentTable = "APP_STUDIO";
+    this.currentView = "studio"; // Update state view
 
     // 1. HARD RESET UI (Tutup semua pintu view lainnya)
-    document.getElementById('view-crud')?.classList.add('hidden');
-    document.getElementById('view-schema-explorer')?.classList.add('hidden'); // INI KUNCINYA: Tutup Skema!
-    document.getElementById('search-container')?.classList.add('hidden'); // Sembunyikan Search
+    document.getElementById("view-crud")?.classList.add("hidden");
+    document.getElementById("view-schema-explorer")?.classList.add("hidden"); // INI KUNCINYA: Tutup Skema!
+    document.getElementById("search-container")?.classList.add("hidden"); // Sembunyikan Search
 
     // 2. Buka Pintu Studio
-    document.getElementById('view-app-studio')?.classList.remove('hidden');
+    document.getElementById("view-app-studio")?.classList.remove("hidden");
 
     // 3. Update Header
-    const titleEl = document.getElementById('cur-title');
+    const titleEl = document.getElementById("cur-title");
     if (titleEl) titleEl.innerText = "APP STUDIO";
 
     // 4. Update Navigasi Sidebar (Sync Warna)
-    document.querySelectorAll('.nav-btn, #nav-app-studio, #nav-schema-explorer').forEach(b => {
-      b.classList.remove('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
-      b.classList.add('text-slate-400');
-    });
+    document
+      .querySelectorAll(".nav-btn, #nav-app-studio, #nav-schema-explorer")
+      .forEach((b) => {
+        b.classList.remove(
+          "bg-blue-600",
+          "text-white",
+          "shadow-lg",
+          "sidebar-active"
+        );
+        b.classList.add("text-slate-400");
+      });
 
-    const navBtn = document.getElementById('nav-app-studio');
-    if (navBtn) navBtn.classList.add('bg-blue-600', 'text-white', 'shadow-lg', 'sidebar-active');
+    const navBtn = document.getElementById("nav-app-studio");
+    if (navBtn)
+      navBtn.classList.add(
+        "bg-blue-600",
+        "text-white",
+        "shadow-lg",
+        "sidebar-active"
+      );
 
     // 5. Reset & Load Field
-    const fieldContainer = document.getElementById('st-fields-container');
-    if (fieldContainer) fieldContainer.innerHTML = '';
+    const fieldContainer = document.getElementById("st-fields-container");
+    if (fieldContainer) fieldContainer.innerHTML = "";
     this.studioAddField();
   },
-studioAddField() {
-  const id = Date.now();
-  const html = `
+  studioAddField() {
+    const id = Date.now();
+    const html = `
     <div id="st-f-${id}" class="p-6 bg-slate-50 rounded-[2rem] border border-slate-200 space-y-4 mb-4 animate-fade-in">
       <div class="flex justify-between items-center">
         <span class="text-[10px] font-black text-blue-600 tracking-widest uppercase">Konfigurasi Kolom</span>
@@ -1461,58 +1760,64 @@ studioAddField() {
         </label>
       </div>
     </div>`;
-    
-  document.getElementById('st-fields-container').insertAdjacentHTML('beforeend', html);
-  
-  // Ambil list tabel untuk dropdown relasi
-  if (this.resources) {
-    const relSelect = document.querySelector(`#st-f-${id} .st-rel-table`);
-    this.resources.forEach(res => {
-      const opt = document.createElement('option');
-      opt.value = res.id;
-      opt.textContent = res.label;
-      relSelect.appendChild(opt);
-    });
-  }
 
-  this.syncStudioOptions(id);
+    document
+      .getElementById("st-fields-container")
+      .insertAdjacentHTML("beforeend", html);
+
+    // Ambil list tabel untuk dropdown relasi
+    if (this.resources) {
+      const relSelect = document.querySelector(`#st-f-${id} .st-rel-table`);
+      this.resources.forEach((res) => {
+        const opt = document.createElement("option");
+        opt.value = res.id;
+        opt.textContent = res.label;
+        relSelect.appendChild(opt);
+      });
+    }
+
+    this.syncStudioOptions(id);
   },
 
-  
-
-
   async loadPermissions() {
-    console.log('[PERMISSION] Loading...');
-    const role = localStorage.getItem('sk_role');
-    
+    console.log("[PERMISSION] Loading...");
+    const role = localStorage.getItem("sk_role");
+
     const res = await this.get({
-      action: 'read',
-      table: 'config_permissions'
+      action: "read",
+      table: "config_permissions",
     });
 
     this.permissions = {};
 
     if (!res.success) {
-      console.warn('[PERMISSION] Forbidden/Error. Menggunakan mode akses terbatas.');
+      console.warn(
+        "[PERMISSION] Forbidden/Error. Menggunakan mode akses terbatas."
+      );
       if (this.allResources) {
-        this.allResources.forEach(r => {
-          this.permissions[r.id.toLowerCase().trim()] = { browse: true, add: false, edit: false, delete: false };
+        this.allResources.forEach((r) => {
+          this.permissions[r.id.toLowerCase().trim()] = {
+            browse: true,
+            add: false,
+            edit: false,
+            delete: false,
+          };
         });
       }
       return true;
     }
 
-    res.rows.forEach(p => {
+    res.rows.forEach((p) => {
       if (!p.resource || !p.role) return;
       if (String(p.role).toLowerCase() !== role.toLowerCase()) return;
-      
+
       const resource = String(p.resource).toLowerCase().trim();
       this.permissions[resource] = {
-        browse: String(p.can_browse).toUpperCase() === 'TRUE',
-        add: String(p.can_add).toUpperCase() === 'TRUE',
-        edit: String(p.can_edit).toUpperCase() === 'TRUE',
-        delete: String(p.can_delete).toUpperCase() === 'TRUE',
-        policy: String(p.ownership_policy || 'ALL').toUpperCase()
+        browse: String(p.can_browse).toUpperCase() === "TRUE",
+        add: String(p.can_add).toUpperCase() === "TRUE",
+        edit: String(p.can_edit).toUpperCase() === "TRUE",
+        delete: String(p.can_delete).toUpperCase() === "TRUE",
+        policy: String(p.ownership_policy || "ALL").toUpperCase(),
       };
     });
 
@@ -1522,7 +1827,7 @@ studioAddField() {
 
   can(resource, action) {
     if (!this.role) return false;
-    if (this.role.toUpperCase() === 'ADMIN') return true;
+    if (this.role.toUpperCase() === "ADMIN") return true;
 
     const resKey = String(resource).toLowerCase().trim();
     const perm = this.permissions[resKey];
@@ -1531,38 +1836,30 @@ studioAddField() {
     return perm[action] === true;
   },
 
-
-
-
-  
-
-
-
-
-
   async init() {
     if (!this.token) return;
 
-    if (!this.role) this.role = localStorage.getItem('sk_role') || '';
-    
-    document.getElementById('login-screen')?.classList.add('hidden');
-    document.getElementById('u-email').innerText = this.email || '';
-    document.getElementById('u-role').innerText = this.role || '';
-    
-    const systemTools = document.getElementById('system-tools');
+    if (!this.role) this.role = localStorage.getItem("sk_role") || "";
+
+    document.getElementById("login-screen")?.classList.add("hidden");
+    document.getElementById("u-email").innerText = this.email || "";
+    document.getElementById("u-role").innerText = this.role || "";
+
+    const systemTools = document.getElementById("system-tools");
     if (systemTools) {
-      this.role?.toUpperCase() === 'ADMIN' ? 
-        systemTools.classList.remove('hidden') : systemTools.classList.add('hidden');
+      this.role?.toUpperCase() === "ADMIN"
+        ? systemTools.classList.remove("hidden")
+        : systemTools.classList.add("hidden");
     }
 
-    const titleEl = document.getElementById('cur-title');
-    if (titleEl) titleEl.innerText = "SYNCHRONIZING...";
+    const titleEl = document.getElementById("cur-title");
+    if (titleEl) titleEl.innerText = "synch...";
 
     await this.loadPermissions();
     // DEBUG 1: Cek apakah permissions sudah terisi
     // console.log("DEBUG 1 - Permissions Map:", this.permissions);
 
-    const resList = await this.get({ action: 'listResources' });
+    const resList = await this.get({ action: "listResources" });
     if (!resList.success) {
       alert("Koneksi gagal atau Token Expired");
       auth.logout();
@@ -1574,221 +1871,229 @@ studioAddField() {
     this.resourceCache = {};
     this.schemaCache = {};
 
-    await Promise.all(this.allResources.map(async (res) => {
-      try {
-        const detail = await this.get({ action: 'read', table: res.id });
-        
-        if (detail.success) {
-          this.fullAppData[res.id] = { schema: detail.schema, rows: detail.rows };
-          this.resourceCache[res.id] = detail.rows;
-          
-          this.schemaCache[res.id] = {
-            schema: detail.schema,
-            modes: detail.modes || {
-              add: this.can(res.id, 'add'),
-              edit: this.can(res.id, 'edit'),
-              delete: this.can(res.id, 'delete'),
-              browse: { fields: Object.keys(detail.schema) }
-            }
-          };
-          // DEBUG 2: Cek apakah rakitan modes untuk tiap tabel benar
-          // console.log(`DEBUG 2 - Table ${res.id} Modes:`, this.schemaCache[res.id].modes);
+    await Promise.all(
+      this.allResources.map(async (res) => {
+        try {
+          const detail = await this.get({ action: "read", table: res.id });
 
-        } else {
-          console.warn(`[INIT] Tabel ${res.id} diblokir: ${detail.message}`);
-          this.schemaCache[res.id] = { 
-            schema: {}, 
-            modes: { add: false, edit: false, delete: false } 
-          };
+          if (detail.success) {
+            this.fullAppData[res.id] = {
+              schema: detail.schema,
+              rows: detail.rows,
+            };
+            this.resourceCache[res.id] = detail.rows;
+
+            this.schemaCache[res.id] = {
+              schema: detail.schema,
+              modes: detail.modes || {
+                add: this.can(res.id, "add"),
+                edit: this.can(res.id, "edit"),
+                delete: this.can(res.id, "delete"),
+                browse: { fields: Object.keys(detail.schema) },
+              },
+            };
+            // DEBUG 2: Cek apakah rakitan modes untuk tiap tabel benar
+            // console.log(`DEBUG 2 - Table ${res.id} Modes:`, this.schemaCache[res.id].modes);
+          } else {
+            console.warn(`[INIT] Tabel ${res.id} diblokir: ${detail.message}`);
+            this.schemaCache[res.id] = {
+              schema: {},
+              modes: { add: false, edit: false, delete: false },
+            };
+          }
+        } catch (e) {
+          console.error(`Error loading ${res.id}`, e);
         }
-      } catch (e) {
-        console.error(`Error loading ${res.id}`, e);
-      }
-    }));
-    
+      })
+    );
+
     this.openDashboard();
     this.renderSidebar();
     if (titleEl) titleEl.innerText = "SYSTEM READY";
   },
 
-
-
-async loadResource(forceRefresh = false) {
-  const vm = document.getElementById('view-mode')?.value || 'active';
-  const btnRefresh = document.getElementById('btn-refresh');
-  const btnAdd = document.getElementById('btn-add');
-  const titleEl = document.getElementById('cur-title');
-
-  /* =====================================================
-   * UI START
-   * ===================================================== */
-  if (btnRefresh) btnRefresh.classList.add('animate-spin');
-  if (titleEl) {
-    titleEl.innerText =
-      "SYNCHRONIZING " + this.currentTable.toUpperCase() + "...";
-  }
-
-  if (forceRefresh) {
-    this.resourceCache[this.currentTable] = [];
-  }
-
-  try {
-    /* =====================================================
-     * 0. LOAD TABLE UTAMA
-     * ===================================================== */
-    const d = await this.get({
-      action: 'read',
-      table: this.currentTable,
-      viewMode: vm,
-      _t: forceRefresh ? Date.now() : null
-    });
-
-    if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-
-    if (!d || d.success !== true) {
-      throw new Error(d?.message || 'Invalid response');
-    }
+  async loadResource(forceRefresh = false) {
+    const vm = document.getElementById("view-mode")?.value || "active";
+    const btnRefresh = document.getElementById("btn-refresh");
+    const btnAdd = document.getElementById("btn-add");
+    const titleEl = document.getElementById("cur-title");
 
     /* =====================================================
-     * 1. SCHEMA NORMALIZATION (PATUH TOTAL)
+     * UI START
      * ===================================================== */
-    const rawSchema = d.schema;
-    this.schema = {};
-
-    if (rawSchema && typeof rawSchema === 'object' && !Array.isArray(rawSchema)) {
-      // Native schema object (v44+)
-      this.schema = rawSchema;
-    } 
-    else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-      // Legacy fallback
-      const headers = rawSchema[0];
-      const configs = rawSchema[1];
-
-      headers.forEach((h, i) => {
-        let cfg = configs[i];
-        if (typeof cfg === 'string') {
-          try { cfg = JSON.parse(cfg); } catch { cfg = {}; }
-        }
-        this.schema[h] = { ...cfg, name: h, headerIdx: i };
-      });
-    }
-
-    console.table(this.schema);
-
-    /* =====================================================
-     * 2. MODES & ROW CACHE (TABLE AKTIF)
-     * ===================================================== */
-    this.modes = d.modes || {
-      add:    { can: true },
-      edit:   { can: true },
-      delete: { can: true },
-      browse: { can: true }
-    };
-
-    const rows = Array.isArray(d.rows) ? d.rows : [];
-    this.resourceCache[this.currentTable] = rows;
-
-    /* =====================================================
-     * 3. 🔥 LOOKUP PRELOAD ENGINE (BENAR & AMAN)
-     * ===================================================== */
-    this.lookupTables = this.lookupTables || new Set();
-
-    Object.values(this.schema).forEach(col => {
-      if (
-        col.type === 'LOOKUP' &&
-        col.lookup?.table &&
-        col.lookup.mode === 'browse'
-      ) {
-        this.lookupTables.add(col.lookup.table);
-      }
-    });
-
-    for (const table of this.lookupTables) {
-      if (!this.resourceCache[table]) {
-        console.log('🔁 Preloading lookup table:', table);
-
-        const ref = await this.get({
-          action: 'read',
-          table,
-          source: 'lookup',   // 🔑 INTENT WAJIB
-          mode: 'browse'      // 🔑 MODE WAJIB
-        });
-
-        if (ref && ref.success === true) {
-          this.resourceCache[table] = Array.isArray(ref.rows) ? ref.rows : [];
-        } else {
-          console.warn('⚠️ Lookup preload failed:', table);
-          this.resourceCache[table] = [];
-        }
-      }
-    }
-
-    /* =====================================================
-     * 4. ADD BUTTON VISIBILITY
-     * ===================================================== */
-    if (btnAdd) {
-      const canAdd =
-        this.modes?.add?.can === true ||
-        this.modes?.can_add === true;
-
-      if (canAdd && vm === 'active') {
-        btnAdd.classList.replace('hidden', 'flex');
-      } else {
-        btnAdd.classList.replace('flex', 'hidden');
-      }
-    }
-
-    /* =====================================================
-     * 5. RENDER CORE
-     * ===================================================== */
-    this.renderTable(rows);
-
+    if (btnRefresh) btnRefresh.classList.add("animate-spin");
     if (titleEl) {
-      titleEl.innerText =
-        this.currentTable.replace(/_/g, ' ').toUpperCase();
+      titleEl.innerText = "synch... " + this.currentTable.toUpperCase() + "...";
     }
 
-  } catch (err) {
-    console.error("🔥 loadResource fatal:", err);
+    if (forceRefresh) {
+      this.resourceCache[this.currentTable] = [];
+    }
 
-    if (btnRefresh) btnRefresh.classList.remove('animate-spin');
-    if (titleEl) titleEl.innerText = "LOAD ERROR";
+    try {
+      /* =====================================================
+       * 0. LOAD TABLE UTAMA
+       * ===================================================== */
+      const d = await this.get({
+        action: "read",
+        table: this.currentTable,
+        viewMode: vm,
+        _t: forceRefresh ? Date.now() : null,
+      });
 
-    alert("Gagal memuat data");
-  }
-},
+      if (btnRefresh) btnRefresh.classList.remove("animate-spin");
 
-async save() {
+      if (!d || d.success !== true) {
+        throw new Error(d?.message || "Invalid response");
+      }
+
+      /* =====================================================
+       * 1. SCHEMA NORMALIZATION (PATUH TOTAL)
+       * ===================================================== */
+      const rawSchema = d.schema;
+      this.schema = {};
+
+      if (
+        rawSchema &&
+        typeof rawSchema === "object" &&
+        !Array.isArray(rawSchema)
+      ) {
+        // Native schema object (v44+)
+        this.schema = rawSchema;
+      } else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
+        // Legacy fallback
+        const headers = rawSchema[0];
+        const configs = rawSchema[1];
+
+        headers.forEach((h, i) => {
+          let cfg = configs[i];
+          if (typeof cfg === "string") {
+            try {
+              cfg = JSON.parse(cfg);
+            } catch {
+              cfg = {};
+            }
+          }
+          this.schema[h] = { ...cfg, name: h, headerIdx: i };
+        });
+      }
+
+      console.table(this.schema);
+
+      /* =====================================================
+       * 2. MODES & ROW CACHE (TABLE AKTIF)
+       * ===================================================== */
+      this.modes = d.modes || {
+        add: { can: true },
+        edit: { can: true },
+        delete: { can: true },
+        browse: { can: true },
+      };
+
+      const rows = Array.isArray(d.rows) ? d.rows : [];
+      this.resourceCache[this.currentTable] = rows;
+
+      /* =====================================================
+       * 3. 🔥 LOOKUP PRELOAD ENGINE (BENAR & AMAN)
+       * ===================================================== */
+      this.lookupTables = this.lookupTables || new Set();
+
+      Object.values(this.schema).forEach((col) => {
+        if (
+          col.type === "LOOKUP" &&
+          col.lookup?.table &&
+          col.lookup.mode === "browse"
+        ) {
+          this.lookupTables.add(col.lookup.table);
+        }
+      });
+
+      for (const table of this.lookupTables) {
+        if (!this.resourceCache[table]) {
+          console.log("🔁 Preloading lookup table:", table);
+
+          const ref = await this.get({
+            action: "read",
+            table,
+            source: "lookup", // 🔑 INTENT WAJIB
+            mode: "browse", // 🔑 MODE WAJIB
+          });
+
+          if (ref && ref.success === true) {
+            this.resourceCache[table] = Array.isArray(ref.rows) ? ref.rows : [];
+          } else {
+            console.warn("⚠️ Lookup preload failed:", table);
+            this.resourceCache[table] = [];
+          }
+        }
+      }
+
+      /* =====================================================
+       * 4. ADD BUTTON VISIBILITY
+       * ===================================================== */
+      if (btnAdd) {
+        const canAdd =
+          this.modes?.add?.can === true || this.modes?.can_add === true;
+
+        if (canAdd && vm === "active") {
+          btnAdd.classList.replace("hidden", "flex");
+        } else {
+          btnAdd.classList.replace("flex", "hidden");
+        }
+      }
+
+      /* =====================================================
+       * 5. RENDER CORE
+       * ===================================================== */
+      this.renderTable(rows);
+
+      if (titleEl) {
+        titleEl.innerText = this.currentTable.replace(/_/g, " ").toUpperCase();
+      }
+    } catch (err) {
+      console.error("🔥 loadResource fatal:", err);
+
+      if (btnRefresh) btnRefresh.classList.remove("animate-spin");
+      if (titleEl) titleEl.innerText = "LOAD ERROR";
+
+      alert("Gagal memuat data");
+    }
+  },
+
+  async save() {
     // 1. Proteksi Awal & Ambil Tombol
-    const btnSave = document.getElementById('btn-commit');
-    if (this.isSubmitting) return; 
+    const btnSave = document.getElementById("btn-commit");
+    if (this.isSubmitting) return;
 
-    const form = document.getElementById('f-fields');
-    
+    const form = document.getElementById("f-fields");
+
     // --- 🛡️ SHIELD: VALIDASI REQUIRED (Wajib di FE sebelum tutup) ---
-    const requiredInputs = form.querySelectorAll('[required]');
+    const requiredInputs = form.querySelectorAll("[required]");
     let invalidFields = [];
-    requiredInputs.forEach(input => {
+    requiredInputs.forEach((input) => {
       if (!input.value || input.value.trim() === "") {
-        const fieldLabel = (this.schema && this.schema[input.name]?.label) || input.name;
+        const fieldLabel =
+          (this.schema && this.schema[input.name]?.label) || input.name;
         invalidFields.push(fieldLabel.toUpperCase());
-        input.classList.add('border-red-500', 'bg-red-50');
+        input.classList.add("border-red-500", "bg-red-50");
       }
     });
 
     if (invalidFields.length > 0) {
-      alert("❌ WAJIB DIISI:\n" + invalidFields.join('\n'));
-      return; 
+      alert("❌ WAJIB DIISI:\n" + invalidFields.join("\n"));
+      return;
     }
 
     // 2. Collect Data
-    const inputs = form.querySelectorAll('input, select');
+    const inputs = form.querySelectorAll("input, select");
     const data = {};
-    inputs.forEach(el => { if (el.name) data[el.name] = el.value; });
+    inputs.forEach((el) => {
+      if (el.name) data[el.name] = el.value;
+    });
     if (this.editingId) data.id = this.editingId;
 
-    const action = this.editingId ? 'update' : 'create';
-    
+    const action = this.editingId ? "update" : "create";
+
     try {
       this.isSubmitting = true;
       if (btnSave) {
@@ -1798,7 +2103,7 @@ async save() {
 
       // --- ⚡ FILOSOFI JURAGAN: TUTUP APAPUN YANG TERJADI ---
       setTimeout(() => {
-        this.closeForm(); 
+        this.closeForm();
         this.isSubmitting = false;
         // Tombol dikembalikan ke state awal di dalam modal yang sudah tersembunyi
         if (btnSave) {
@@ -1806,82 +2111,91 @@ async save() {
           btnSave.innerText = "COMMIT DATA";
         }
         console.log("🚀 Optimistic Close: Form ditutup sesuai instruksi.");
-      }, 1000);
+      }, 600);
 
       const payload = {
         action: action,
         table: this.currentTable,
-        token: this.token || localStorage.getItem('sk_token'),
+        token: this.token || localStorage.getItem("sk_token"),
         ua: navigator.userAgent,
-        sheet: localStorage.getItem('sk_sheet'),
-        data: data
+        sheet: localStorage.getItem("sk_sheet"),
+        data: data,
       };
 
       // 3. Kirim ke Engine GAS
       const response = await fetch(DYNAMIC_ENGINE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
       });
 
       const resultText = await response.text();
       let resultJson;
-      try { resultJson = JSON.parse(resultText); } catch(e) { resultJson = { success: response.ok }; }
-      
+      try {
+        resultJson = JSON.parse(resultText);
+      } catch (e) {
+        resultJson = { success: response.ok };
+      }
+
       // 4. Feedback via Toast/Console (Bukan menghalangi penutupan form)
       if (resultJson && resultJson.success) {
         console.log("✅ SAVE_SUCCESS");
-        if (typeof this.showToast === 'function') this.showToast("Data berhasil disimpan!", "success");
+        if (typeof this.showToast === "function")
+          this.showToast("Data berhasil disimpan!", "success");
         this.loadResource(true); // Refresh data di tabel
       } else {
         console.error("❌ SAVE_FAILED:", resultJson.message);
-        if (typeof this.showToast === 'function') this.showToast("Gagal: " + resultJson.message, "error");
+        if (typeof this.showToast === "function")
+          this.showToast("Gagal: " + resultJson.message, "error");
         else alert("Gagal Simpan: " + resultJson.message);
       }
-
     } catch (err) {
       console.error("🔥 CRITICAL_ERROR:", err);
-      if (typeof this.showToast === 'function') this.showToast("Koneksi Error!", "error");
+      if (typeof this.showToast === "function")
+        this.showToast("Koneksi Error!", "error");
       this.isSubmitting = false;
     }
   },
 
-// --- JEMBATAN GET: LOAD DATA DENGAN FAILOVER ---
+  // --- JEMBATAN GET: LOAD DATA DENGAN FAILOVER ---
   async get(params = {}) {
     try {
       showLoading(true);
-      let dynamicEngineUrl = localStorage.getItem('sk_engine_url');
-      if (!dynamicEngineUrl) throw new Error('ENGINE_URL_NOT_FOUND');
+      let dynamicEngineUrl = localStorage.getItem("sk_engine_url");
+      if (!dynamicEngineUrl) throw new Error("ENGINE_URL_NOT_FOUND");
 
-      let sheetId = localStorage.getItem('sk_sheet') || '';
-      if (sheetId.includes('/d/')) {
-        sheetId = sheetId.split('/d/')[1].split('/')[0];
+      let sheetId = localStorage.getItem("sk_sheet") || "";
+      if (sheetId.includes("/d/")) {
+        sheetId = sheetId.split("/d/")[1].split("/")[0];
       }
 
-      const token = this.token || localStorage.getItem('sk_token') || '';
-      const serial = localStorage.getItem('sk_serial') || '';
-      if (!token) throw new Error('TOKEN_MISSING');
+      const token = this.token || localStorage.getItem("sk_token") || "";
+      const serial = localStorage.getItem("sk_serial") || "";
+      if (!token) throw new Error("TOKEN_MISSING");
 
       const baseParams = {
         token,
         sheet: sheetId,
         ua: navigator.userAgent,
-        serial: serial 
+        serial: serial,
       };
 
       const finalParams = { ...params };
-      if (params.source === 'lookup') {
-        finalParams.mode = params.mode || 'browse';
-        finalParams.source = 'lookup';
+      if (params.source === "lookup") {
+        finalParams.mode = params.mode || "browse";
+        finalParams.source = "lookup";
         delete finalParams.page;
         delete finalParams.per_page;
       }
 
-      const q = new URLSearchParams({ ...finalParams, ...baseParams }).toString();
+      const q = new URLSearchParams({
+        ...finalParams,
+        ...baseParams,
+      }).toString();
 
       const res = await fetch(`${dynamicEngineUrl}?${q}`, {
-        method: 'GET',
-        credentials: 'omit'
+        method: "GET",
+        credentials: "omit",
       });
 
       // --- TRIGER TERIAK JIKA OVERLOAD (429/503) ---
@@ -1896,10 +2210,10 @@ async save() {
       showLoading(false);
       return data;
     } catch (e) {
-      console.error('GET_FATAL:', e);
-      
+      console.error("GET_FATAL:", e);
+
       // Jika koneksi putus (TypeError), coba minta engine baru
-      if (e.name === 'TypeError' || e.message.includes('HTTP')) {
+      if (e.name === "TypeError" || e.message.includes("HTTP")) {
         const newUrl = await this.shoutToMaster();
         if (newUrl) return this.get(params);
       }
@@ -1912,26 +2226,40 @@ async save() {
   // --- JEMBATAN POST: COMMIT DATA DENGAN FAILOVER ---
   async post(arg1, arg2) {
     try {
-      const dynamicEngineUrl = localStorage.getItem('sk_engine_url');
-      const token = this.token || localStorage.getItem('sk_token') || '';
-      const serial = localStorage.getItem('sk_serial') || '';
+      const dynamicEngineUrl = localStorage.getItem("sk_engine_url");
+      const token = this.token || localStorage.getItem("sk_token") || "";
+      const serial = localStorage.getItem("sk_serial") || "";
 
-      let sheetId = localStorage.getItem('sk_sheet') || '';
-      if (sheetId.includes('/d/')) {
-        sheetId = sheetId.split('/d/')[1].split('/')[0];
+      let sheetId = localStorage.getItem("sk_sheet") || "";
+      if (sheetId.includes("/d/")) {
+        sheetId = sheetId.split("/d/")[1].split("/")[0];
       }
 
       let finalPayload;
-      if (typeof arg1 === 'object' && !arg2) {
-        finalPayload = { ...arg1, token, sheet: sheetId, ua: navigator.userAgent, serial };
+      if (typeof arg1 === "object" && !arg2) {
+        finalPayload = {
+          ...arg1,
+          token,
+          sheet: sheetId,
+          ua: navigator.userAgent,
+          serial,
+        };
       } else {
-        finalPayload = { action: arg1, table: this.currentTable, data: arg2, token, sheet: sheetId, ua: navigator.userAgent, serial };
+        finalPayload = {
+          action: arg1,
+          table: this.currentTable,
+          data: arg2,
+          token,
+          sheet: sheetId,
+          ua: navigator.userAgent,
+          serial,
+        };
       }
 
       const res = await fetch(dynamicEngineUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalPayload)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(finalPayload),
       });
 
       // --- TRIGER TERIAK JIKA OVERLOAD ---
@@ -1944,7 +2272,7 @@ async save() {
       return await res.json();
     } catch (e) {
       console.error("[SK-ERROR] Post Error:", e);
-      
+
       // Auto-rescue jika koneksi gagal total
       const newUrl = await this.shoutToMaster();
       if (newUrl) return this.post(arg1, arg2);
@@ -1953,49 +2281,53 @@ async save() {
     }
   },
 
-// --- FUNGSI EMERGENCY RESCUE FE (Upgrade) ---
-// --- FUNGSI EMERGENCY RESCUE FE (Fixed CORS) ---
+  // --- FUNGSI EMERGENCY RESCUE FE (Upgrade) ---
+  // --- FUNGSI EMERGENCY RESCUE FE (Fixed CORS) ---
   async shoutToMaster() {
     try {
-      const serial = localStorage.getItem('sk_serial') || 'N/A';
-      const failedUrl = localStorage.getItem('sk_engine_url') || 'N/A';
-      const email = localStorage.getItem('sk_email') || 'N/A';
+      const serial = localStorage.getItem("sk_serial") || "N/A";
+      const failedUrl = localStorage.getItem("sk_engine_url") || "N/A";
+      const email = localStorage.getItem("sk_email") || "N/A";
 
       const payload = {
-        action: 'emergency_rescue',
+        action: "emergency_rescue",
         serial: serial,
         failed_url: failedUrl,
-        user_email: email
+        user_email: email,
       };
 
-      console.log('🚨 [Rescue FE] Mengirim shout ke master:', payload);
+      console.log("🚨 [Rescue FE] Mengirim shout ke master:", payload);
 
       // SOLUSI CORS: Gunakan method POST tanpa Header application/json
       const res = await fetch(BASE_MASTER_URL, {
-        method: 'POST',
+        method: "POST",
         // Kita gunakan text/plain agar browser tidak melakukan preflight OPTIONS
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-        body: JSON.stringify(payload)
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
       });
 
       const resultText = await res.text();
       let result;
-      
+
       try {
         result = JSON.parse(resultText);
       } catch (e) {
-        console.error("🔥 [Rescue FE] Respon Master bukan JSON valid:", resultText);
+        console.error(
+          "🔥 [Rescue FE] Respon Master bukan JSON valid:",
+          resultText
+        );
         return null;
       }
 
       if (result.success && result.new_engine_url) {
-        localStorage.setItem('sk_engine_url', result.new_engine_url);
-        console.log(`🚑 [Rescue FE] Sukses! Engine Baru: ${result.new_engine_url}`);
+        localStorage.setItem("sk_engine_url", result.new_engine_url);
+        console.log(
+          `🚑 [Rescue FE] Sukses! Engine Baru: ${result.new_engine_url}`
+        );
         return result.new_engine_url;
       } else {
-        console.warn('⚠️ [Rescue FE] Master menolak shout:', result);
+        console.warn("⚠️ [Rescue FE] Master menolak shout:", result);
       }
-
     } catch (err) {
       console.error("🔥 [Rescue FE] Master Engine tidak merespon!", err);
     }
@@ -2006,13 +2338,6 @@ async save() {
   //   const newEngine = await this.shoutToMaster();
   //   console.log('Hasil Test Shout:', newEngine ? 'BERHASIL: ' + newEngine : 'GAGAL');
   // },
-
-
-
-
-
-
-
 };
 app.init();
 
