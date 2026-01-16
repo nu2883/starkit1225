@@ -1853,7 +1853,7 @@ const app = {
     }
 
     const titleEl = document.getElementById("cur-title");
-    if (titleEl) titleEl.innerText = "synch...";
+    if (titleEl) titleEl.innerText = "SYNC...";
 
     await this.loadPermissions();
     // DEBUG 1: Cek apakah permissions sudah terisi
@@ -1923,7 +1923,7 @@ const app = {
      * ===================================================== */
     if (btnRefresh) btnRefresh.classList.add("animate-spin");
     if (titleEl) {
-      titleEl.innerText = "synch... " + this.currentTable.toUpperCase() + "...";
+      titleEl.innerText = "SYNC... " + this.currentTable.toUpperCase() + "...";
     }
 
     if (forceRefresh) {
