@@ -547,6 +547,118 @@ Object.assign(app, {
         }[m])
     );
   },
+
+  async save() {
+    // 1. Proteksi Awal & Ambil Tombol
+    const btnSave = document.getElementById("btn-commit");
+    if (this.isSubmitting) return;
+
+    const form = document.getElementById("f-fields");
+
+    // --- 🛡️ SHIELD: VALIDASI REQUIRED (Wajib di FE sebelum tutup) ---
+    const requiredInputs = form.querySelectorAll("[required]");
+    let invalidFields = [];
+    requiredInputs.forEach((input) => {
+      if (!input.value || input.value.trim() === "") {
+        const fieldLabel =
+          (this.schema && this.schema[input.name]?.label) || input.name;
+        invalidFields.push(fieldLabel.toUpperCase());
+        input.classList.add("border-red-500", "bg-red-50");
+      }
+    });
+
+    if (invalidFields.length > 0) {
+      alert("❌ WAJIB DIISI:\n" + invalidFields.join("\n"));
+      return;
+    }
+
+    // 2. Collect Data
+    const inputs = form.querySelectorAll("input, select");
+    const data = {};
+    inputs.forEach((el) => {
+      if (el.name) data[el.name] = el.value;
+    });
+    if (this.editingId) data.id = this.editingId;
+
+    const action = this.editingId ? "update" : "create";
+
+    try {
+      this.isSubmitting = true;
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerText = "PROSES SIMPAN...";
+      }
+
+      // --- ⚡ FILOSOFI JURAGAN: TUTUP APAPUN YANG TERJADI ---
+      setTimeout(() => {
+        this.closeForm();
+        this.isSubmitting = false;
+        // Tombol dikembalikan ke state awal di dalam modal yang sudah tersembunyi
+        if (btnSave) {
+          btnSave.disabled = false;
+          btnSave.innerText = "COMMIT DATA";
+        }
+        console.log("🚀 Optimistic Close: Form ditutup sesuai instruksi.");
+      }, 600);
+
+      const payload = {
+        action: action,
+        table: this.currentTable,
+        token: this.token || localStorage.getItem("sk_token"),
+        ua: navigator.userAgent,
+        sheet: localStorage.getItem("sk_sheet"),
+        data: data,
+      };
+
+      // 3. Kirim ke Engine GAS
+      const response = await fetch(DYNAMIC_ENGINE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
+      });
+
+      const resultText = await response.text();
+      let resultJson;
+      try {
+        resultJson = JSON.parse(resultText);
+      } catch (e) {
+        resultJson = { success: response.ok };
+      }
+
+      // 4. Feedback via Toast/Console (Bukan menghalangi penutupan form)
+      if (resultJson && resultJson.success) {
+        console.log("✅ SAVE_SUCCESS");
+        if (typeof this.showToast === "function")
+          this.showToast("Data berhasil disimpan!", "success");
+        this.loadResource(true); // Refresh data di tabel
+      } else {
+        console.error("❌ SAVE_FAILED:", resultJson.message);
+        if (typeof this.showToast === "function")
+          this.showToast("Gagal: " + resultJson.message, "error");
+        else alert("Gagal Simpan: " + resultJson.message);
+      }
+    } catch (err) {
+      console.error("🔥 CRITICAL_ERROR:", err);
+      if (typeof this.showToast === "function")
+        this.showToast("Koneksi Error!", "error");
+      this.isSubmitting = false;
+    }
+  },
+
+  filterTable(query) {
+    const searchTerm = query.toLowerCase();
+    const rawData = this.resourceCache[this.currentTable] || [];
+    if (!searchTerm) {
+      this.renderTable(rawData);
+      return;
+    }
+    const filtered = rawData.filter((row) =>
+      Object.values(row).some((val) =>
+        String(val).toLowerCase().includes(searchTerm)
+      )
+    );
+    this.renderTable(filtered);
+  },
 });
 
 // --- Table-specific keyboard shortcut ---

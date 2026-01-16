@@ -331,6 +331,7 @@
                 No Data Found
               </p>
             </div>
+            <br /><br /><br />
           </div>
 
           <div
@@ -530,11 +531,20 @@
     </div>
 
     <script src="auth.js"></script>
+
     <script src="script.js"></script>
+
+    <script src="dashboard.js"></script>
     <script src="studio.js"></script>
     <script src="table.js"></script>
+    <script src="automation.js"></script>
 
     <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        auth.init();
+        initMobileSidebarListeners();
+      });
+
       /**
        * UI NAVIGATION MANAGER
        * Memastikan sistem navigasi mobile tetap berjalan meskipun script utama sedang loading.
