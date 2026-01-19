@@ -120,60 +120,70 @@ function flushEngineLogs() {
 // ================== MAIN POST HANDLER ==================
 function doPost(e) {
   try {
-    const p = JSON.parse(e.postData.contents || '{}');
+    const contents = e.postData.contents;
+    if (!contents) return out({ success: false, message: "EMPTY_PAYLOAD" });
+    
+    const p = JSON.parse(contents);
     const SS = getDynamicSS(p.sheet);
     if (!SS) return out({ success: false, message: "SS_MISSING" });
 
-    // 1. LOGIN (Tanpa Log Traffic)
+    // 1. LOGIN (Tanpa Log Traffic berlebih)
     if (p.action === "login") return out(handleLogin(p, SS));
 
     // 2. VERIFIKASI TOKEN
     const auth = verifyToken(p.token, p.ua);
     if (!auth.valid) return out({ success: false, message: "401_UNAUTHORIZED" });
 
-    // 3. CAPTURE SERIAL (Prioritas Request p.serial)
-    const serial = p.serial || auth.user.serial || '';
+    // 3. CAPTURE SERIAL
+    const serial = p.serial || (auth.user ? auth.user.serial : '') || '';
 
-    // 4. RECORD LOG (Catat action-nya)
+    // 4. RECORD LOG
     bufferEngineLog(auth.user.email, serial, 1, `POST:${p.action}`);
 
     // 5. ACTION SWITCH
+    // Pastikan p.action dievaluasi dengan benar
     switch (p.action) {
+      
+      // 🛡️ ACTION BARU UNTUK ROW POLICY
+      case "create_row_policy":
+        if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN_NOT_ADMIN" });
+        return out(createRowPolicy(p.data, SS));
+      
+      case "delete":
+        // Cek jika tabelnya adalah config_row_policies
+        if (p.table === "config_row_policies") {
+          if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN_NOT_ADMIN" });
+          return out(deleteRowPolicy(p.id, SS));
+        }
+        // Jika tabel lain, jalankan handleWrite delete biasa
+        return out(handleWrite("delete", p.table, p.data, auth.user, SS));
+
+      // ⚙️ ACTION BAWAAN VOYAGER
       case "migrate":
         return out(migrateNewTable(p.data, auth.user, SS));
       case "create":
         return out(handleWrite("create", p.table, p.data, auth.user, SS));
       case "update":
         return out(handleWrite("update", p.table, p.data, auth.user, SS));
-      case "delete":
-        return out(handleWrite("delete", p.table, p.data, auth.user, SS));
       case "flush_logs":
         if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN" });
         flushEngineLogs();
         return out({ success: true });
+
       default:
-        return out({ success: false, message: "ACTION_UNKNOWN" });
+        // Jika sampai sini, berarti action p.action tidak ada yang cocok
+        console.error("Action tidak dikenal: " + p.action);
+        return out({ success: false, message: "ACTION_UNKNOWN: " + p.action });
     }
   } catch (err) {
-    console.warn('doPost error', err);
-    return out({ success: false, message: "REQ_ERR" });
+    console.error('doPost error', err);
+    return out({ success: false, message: "REQ_ERR: " + err.toString() });
   }
 }
-
 // ================== MAIN GET HANDLER ==================
 function doGet(e) {
   try {
-    const {
-      action,
-      table,
-      token,
-      viewMode,
-      sheet: sheetUrl,
-      ua,
-      source,
-      mode,
-      serial
-    } = e.parameter;
+    const { action, table, token, viewMode, sheet: sheetUrl, ua, source, mode, serial } = e.parameter;
 
     const SS = getDynamicSS(sheetUrl);
     if (!SS) return out({ success: false, message: "SS_MISSING" });
@@ -191,6 +201,8 @@ function doGet(e) {
       case "listResources":
         return out(listResources(auth.user, SS));
       case "read":
+        // 🛡️ NEW: Jika membaca tabel policy, gunakan handler khusus
+        if (table === "config_row_policies") return out(readRowPolicies(SS));
         return out(handleRead(table, auth.user, viewMode, SS, source, mode));
       default:
         return out({ success: false, message: "ACTION_UNKNOWN" });
@@ -242,154 +254,335 @@ function canReadTable(ctx) {
  * 🔒 FUNGSI PEMBATAS FIELD (ANTI DATA LEAK)
  */
 /**
- * 🔒 PEMBATAS FIELD LOOKUP (ANTI DATA LEAK)
+
+
+/**
+ * FUNGSI PENERAPAN RLS (ROW LEVEL SECURITY) - VOYAGER ENGINE v44.4
+ * Sesuai Prinsip Keamanan Juragan: Secure, Scalable, Stable.
  */
-function getLookupFields(tableSchema) {
-  const allowed = [];
+function applyRowLevelSecurity(rows, tableName, user, SS) {
+  try {
+    // 1. Ambil semua aturan policy dari sheet config
+    const pRes = readRowPolicies(SS);
+    if (!pRes.success) return rows; 
+    
+    // 2. Filter policy yang hanya berlaku untuk TABEL ini dan ROLE user ini
+    const policies = (pRes.data || []).filter(p => 
+      p.resource === tableName && 
+      p.role === user.role
+    );
 
-  Object.entries(tableSchema).forEach(([field, cfg]) => {
-    if (!cfg) return;
+    // Jika tidak ada aturan khusus untuk role/tabel ini, kembalikan semua data
+    if (policies.length === 0) return rows;
 
-    // 🚫 keras
-    if (cfg.hidden === true) return;
-    if (cfg.type === 'PASSWORD') return;
-    if (cfg.type === 'SECRET') return;
-    if (cfg.sensitive === true) return;
-    if (field === 'deleted_at') return;
+    // 3. Urutkan berdasarkan prioritas (Priority 100 ke atas dieksekusi duluan)
+    policies.sort((a, b) => (parseInt(b.priority) || 0) - (parseInt(a.priority) || 0));
 
-    // ✅ aman
-    allowed.push(field);
-  });
+    // 4. Proses filtering baris demi baris
+    return rows.filter(row => {
+      // Kita cek terhadap setiap policy yang relevan
+      for (let p of policies) {
+        const fieldKey = String(p.field).toLowerCase().trim();
+        
+        // Proteksi jika field yang ditulis di config tidak ada di data_penjualan
+        if (!(fieldKey in row)) {
+          console.warn(`Policy Error: Field ${fieldKey} tidak ditemukan di tabel ${tableName}`);
+          continue; 
+        }
 
-  // fallback minimal
-  if (!allowed.includes('id')) allowed.unshift('id');
+        const cellValue = String(row[fieldKey] || "").toLowerCase().trim();
+        const targetValue = String(p.value || "").toLowerCase().trim().replace(/"/g, ''); 
+        
+        let isMatch = false;
+        
+        // Evaluasi Operator secara dinamis
+        switch(p.operator) {
+          case "=":  isMatch = (cellValue === targetValue); break;
+          case "!=": isMatch = (cellValue !== targetValue); break;
+          case ">":  isMatch = (parseFloat(cellValue) > parseFloat(targetValue)); break;
+          case "<":  isMatch = (parseFloat(cellValue) < parseFloat(targetValue)); break;
+          case "LIKE": isMatch = (cellValue.includes(targetValue)); break;
+          default: isMatch = false;
+        }
 
-  return allowed;
+        // JIKA KONDISI COCOK (MATCH):
+        if (isMatch) {
+          // Putuskan apakah baris ini boleh lewat atau tidak
+          // can_view = TRUE -> Lolos (return true)
+          // can_view = FALSE -> Terblokir (return false)
+          return (String(p.can_view).toUpperCase() === "TRUE");
+        }
+      }
+      // Jika baris ini tidak "terpancing" oleh satupun policy, biarkan muncul secara default
+      return true;
+    });
+  } catch (err) {
+    console.error("Critical RLS Error: " + err.toString());
+    return rows; // Jika error, amankan dengan menampilkan data (atau ganti [] jika ingin zero-trust)
+  }
 }
 
+/**
+ * ============================================================
+ * HANDLE READ (Backend - GAS)
+ * ============================================================
+ * Fungsi utuh untuk membaca data sheet dengan proteksi RLS.
+ */
+/**
+ * REVISI KHUSUS MODE REFERENCE & RLS
+ * Paste bagian ini untuk menggantikan fungsi handleRead, canReadTable, dan getLookupFields yang lama.
+ */
 
 function handleRead(tableName, user, viewMode, SS, source = "browse", mode = "browse") {
   try {
     const sheet = SS.getSheetByName(tableName);
-    if (!sheet) {
-      return { success: false, message: "TABLE_NOT_FOUND" };
-    }
+    if (!sheet) return { success: false, message: "TABLE_NOT_FOUND" };
 
-    // === 1. LOAD SCHEMA & PERMISSION ===
     const schema = getTableSchema(sheet);
     const gov = getGov(tableName, user.role, SS);
 
-    // === 2. EM GUARD (INTENT-BASED) ===
-    const access = canReadTable({
-      user,
-      table: tableName,
-      mode: mode,
-      source: source,
-      permission: gov,
-      schema: schema
-    });
+    // 1. Validasi Akses (Cek apakah ini lookup atau read biasa)
+    const access = canReadTable({ user, table: tableName, mode, source, permission: gov, schema });
+    if (!access.allow) return { success: false, message: access.reason };
 
-    if (!access.allow) {
-      return { success: false, message: access.reason };
-    }
-
-    // =====================================================
-    // 🚪 EARLY EXIT — LOOKUP MODE (STRICT & SAFE)
-    // =====================================================
-    if (access.restricted === true) {
-      const fullData = sheet.getDataRange().getValues();
-
-      // header + schema + kosong
-      if (fullData.length < 3) {
-        return { success: true, rows: [], query_mode: "lookup" };
-      }
-
-      const headers = fullData[0]
-        .map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
-
-      const dataRows = fullData.slice(2);
-
-      const rows = dataRows
-        .map(r => {
-          const obj = {};
-          headers.forEach((key, i) => obj[key] = r[i]);
-          return obj;
-        })
-        .filter(r => !r.deleted_at) // ❌ jangan kirim data terhapus
-        .map(r => {
-          const clean = {};
-          access.fields.forEach(f => {
-            clean[f] = r[f];
-          });
-          return clean;
-        });
-
-      // ❗ lookup TIDAK kirim schema / modes
-      return {
-        success: true,
-        rows: rows,
-        query_mode: "lookup"
-      };
-    }
-
-    // =====================================================
-    // 📊 NORMAL READ FLOW (FULL TABLE)
-    // =====================================================
     const fullData = sheet.getDataRange().getValues();
-    if (fullData.length < 3) {
-      return {
-        success: true,
-        rows: [],
-        schema: schema,
-        modes: gov
-      };
-    }
+    if (fullData.length < 3) return { success: true, rows: [], schema: schema, modes: gov };
 
-    const headers = fullData[0]
-      .map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
-
+    const headers = fullData[0].map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
     const dataRows = fullData.slice(2);
 
-    let formattedRows = dataRows
-      .map(r => {
-        const obj = {};
-        headers.forEach((key, i) => {
-          obj[key] = r[i];
-        });
-        return obj;
-      })
-      .filter(r => {
-        const isDeleted = r.deleted_at && r.deleted_at !== "";
+    // 2. Map ke Object & Filter Dasar
+    let formattedRows = dataRows.map(r => {
+      const obj = {};
+      headers.forEach((key, i) => { obj[key] = r[i]; });
+      return obj;
+    }).filter(r => {
+      const isDeleted = r.deleted_at && r.deleted_at !== "";
+      if (viewMode === "trash") return isDeleted;
+      if (isDeleted) return false;
+      if (gov.ownership_policy === "own" && r.created_by !== user.email) return false;
+      return true;
+    });
 
-        if (viewMode === "trash") return isDeleted;
-        if (isDeleted) return false;
+    // 3. 🛡️ TERAPKAN RLS (Row Level Security)
+    if (tableName !== "config_row_policies") {
+      formattedRows = applyRowLevelSecurity(formattedRows, tableName, user, SS);
+    }
 
-        if (
-          gov.ownership_policy === "own" &&
-          r.created_by !== user.email
-        ) {
-          return false;
-        }
-
-        return true;
-      });
-
+    // 4. 🔒 FILTER KOLOM (Jika mode reference/lookup)
+    const isLookup = (access.restricted === true);
+    
     return {
       success: true,
-      rows: formattedRows,
+      rows: isLookup ? formattedRows.map(r => {
+        const clean = {};
+        access.fields.forEach(f => { clean[f] = r[f]; });
+        return clean;
+      }) : formattedRows,
       schema: schema,
       modes: gov,
-      query_mode: "full"
+      query_mode: isLookup ? "lookup" : "full"
     };
 
   } catch (err) {
-    return {
-      success: false,
-      message: err.toString()
-    };
+    console.error("Critical Read Error:", err);
+    return { success: false, message: err.toString() };
   }
 }
 
+function canReadTable(ctx) {
+  const { user, table, mode, source, permission, schema } = ctx;
+
+  // Logic khusus mode reference (lookup)
+  if (source === 'lookup' || mode === 'reference') {
+    if (!schema) return { allow: false, reason: 'SCHEMA_MISSING' };
+    return {
+      allow: true,
+      restricted: true,
+      fields: getLookupFields(schema)
+    };
+  }
+
+  // Logic read biasa
+  if (!permission) return { allow: false, reason: 'NO_PERMISSION' };
+  if (permission.can_browse === true) return { allow: true };
+
+  return { allow: false, reason: '403_FORBIDDEN' };
+}
+
+function getLookupFields(tableSchema) {
+  const allowed = [];
+  Object.entries(tableSchema).forEach(([field, cfg]) => {
+    if (!cfg) return;
+    // Blacklist kolom sensitif
+    if (cfg.hidden === true || cfg.type === 'PASSWORD' || cfg.type === 'SECRET' || cfg.sensitive === true || field === 'deleted_at') return;
+    allowed.push(field);
+  });
+  if (!allowed.includes('id')) allowed.unshift('id');
+  return allowed;
+}
+
+/**
+ * ============================================================
+ * ROW LEVEL SECURITY MODULE (STARKIT v44.4)
+ * ============================================================
+ */
+function readRowPolicies(SS) {
+  try {
+    let sheet = SS.getSheetByName("config_row_policies");
+    if (!sheet) return { success: true, data: [] };
+    const values = sheet.getDataRange().getValues();
+    if (values.length <= 1) return { success: true, data: [] };
+    const headers = values[0].map(h => String(h).trim().toLowerCase());
+    const data = values.slice(1).map(row => {
+      let obj = {};
+      headers.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    });
+    return { success: true, data: data };
+  } catch (e) { return { success: false, message: e.toString() }; }
+}
+
+/**
+ * CREATE ROW POLICY (Backend - GAS)
+ * Fungsi untuk menyimpan aturan keamanan baru ke sheet config_row_policies.
+ * Otomatis menangani tanda petik satu (') pada operator agar tidak error di Sheets.
+ */
+function createRowPolicy(data, SS) {
+  const lock = LockService.getScriptLock();
+  try {
+    // Tunggu akses hingga 10 detik agar tidak tabrakan (Scalability)
+    lock.waitLock(10000);
+    
+    let sheet = SS.getSheetByName("config_row_policies");
+    
+    // Jika sheet belum ada, buat baru dengan header lengkap
+    if (!sheet) {
+      sheet = SS.insertSheet("config_row_policies");
+      sheet.appendRow([
+        'id', 'policy_name', 'resource', 'role', 'field', 
+        'operator', 'value', 'can_view', 'priority', 'created_at'
+      ]);
+      // Beri format teks pada kolom operator dan value agar lebih aman
+      sheet.getRange("F:G").setNumberFormat("@"); 
+    }
+
+    // 1. GENERATE UNIQUE ID
+    const id = "POL-" + Utilities.getUuid().slice(0, 8).toUpperCase();
+
+    // 2. LOGIKA OTOMATIS TANDA PETIK (Anti-Formula Error)
+    let op = String(data.operator || "=").trim();
+    
+    // Pastikan jika isinya = atau !=, kita beri tanda petik satu (') di depannya
+    // Google Sheets akan membacanya sebagai teks, bukan awal formula
+    if (op === "=" || op === "!=") {
+      op = "'" + op; 
+    }
+
+    // 3. PREPARASI DATA BARIS
+    const rowPayload = [
+      id,
+      data.policy_name || "New Policy",
+      data.resource,     // Nama tabel (data_penjualan)
+      data.role,         // Nama role (kasir)
+      data.field,        // Nama kolom (status)
+      op,                // Operator yang sudah diproteksi ('=)
+      data.value,        // Nilai (PAID)
+      String(data.can_view).toUpperCase(), // TRUE/FALSE
+      data.priority || 100,
+      new Date().toISOString()
+    ];
+
+    // 4. EKSEKUSI SIMPAN
+    sheet.appendRow(rowPayload);
+
+    return { 
+      success: true, 
+      id: id, 
+      message: "Policy saved successfully with operator protection" 
+    };
+
+  } catch (err) {
+    console.error("Error createRowPolicy:", err);
+    return { success: false, message: err.toString() };
+  } finally {
+    // Selalu lepas lock agar user lain bisa menulis
+    lock.releaseLock();
+  }
+}
+
+function deleteRowPolicy(id, SS) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = SS.getSheetByName("config_row_policies");
+    if (!sheet) return { success: false };
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(id)) {
+        sheet.deleteRow(i + 1);
+        return { success: true };
+      }
+    }
+    return { success: false, message: "POLICY_NOT_FOUND" };
+  } catch (e) { return { success: false, message: e.toString() }; }
+  finally { if (lock.hasLock()) lock.releaseLock(); }
+}
+
+/**
+ * FUNGSI PENERAPAN RLS (ROW LEVEL SECURITY) - VERSI ANTI-ERROR SHEET
+ * Menangani karakter khusus seperti '= atau '!= yang ada di Spreadsheet
+ */
+function applyRowLevelSecurity(rows, tableName, user, SS) {
+  try {
+    const pRes = readRowPolicies(SS);
+    if (!pRes.success) return rows; 
+    
+    const policies = (pRes.data || []).filter(p => 
+      p.resource === tableName && p.role === user.role
+    );
+
+    if (policies.length === 0) return rows;
+
+    // Sort prioritas (100 ke atas)
+    policies.sort((a, b) => (parseInt(b.priority) || 0) - (parseInt(a.priority) || 0));
+
+    return rows.filter(row => {
+      // Loop melalui setiap aturan policy
+      for (let p of policies) {
+        const fieldKey = String(p.field).toLowerCase().trim();
+        if (!(fieldKey in row)) continue;
+
+        const cellValue = String(row[fieldKey] || "").toLowerCase().trim();
+        const targetValue = String(p.value || "").toLowerCase().trim().replace(/"/g, '');
+        const op = String(p.operator).trim().startsWith("'") ? p.operator.slice(1) : p.operator;
+
+        let isMatch = false;
+        if (op === "=") isMatch = (cellValue === targetValue);
+        else if (op === "!=") isMatch = (cellValue !== targetValue);
+        else if (op === ">") isMatch = (parseFloat(cellValue) > parseFloat(targetValue));
+        else if (op === "<") isMatch = (parseFloat(cellValue) < parseFloat(targetValue));
+
+        // JIKA MATCH: Langsung ambil keputusan dari policy ini dan BERHENTI (Return)
+        if (isMatch) {
+          return (String(p.can_view).toUpperCase() === "TRUE");
+        }
+      }
+      
+      /**
+       * 💡 LOGIKA DEFAULT (PENTING):
+       * Jika ada policy untuk tabel ini tapi baris data tidak "match" dengan value-nya,
+       * maka kita harus memutuskan: Apakah default-nya boleh lihat atau tidak?
+       * * Rekomendasi: Jika ada policy "=" dan can_view "TRUE", 
+       * maka yang tidak match otomatis FALSE (Whitelist mode).
+       */
+      const hasWhitelist = policies.some(p => String(p.can_view).toUpperCase() === "TRUE");
+      return hasWhitelist ? false : true; 
+    });
+  } catch (err) {
+    return rows;
+  }
+}
 
 // --- 4. CORE WRITE ENGINE (WATCHTOWER SYNC) ---
 function handleWrite(action, tableName, payload, user, SS) {

@@ -204,6 +204,17 @@
               </div>
               <span class="tracking-tight">ACCESS CONTROL</span>
             </button>
+
+            <!-- ROW POLICY -->
+        <button
+          onclick="app.openRowPolicy()"
+          id="nav-row-policy"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm text-slate-400 hover:bg-red-900/20 hover:text-red-400 transition-all text-left group border border-transparent hover:border-red-900/30"
+        >
+          <i class="fa-solid fa-layer-group text-red-500 group-hover:scale-110 transition-transform"></i>
+          <span>ROW POLICY</span>
+        </button>
+
           </div>
         </nav>
 
@@ -233,6 +244,7 @@
             Logout
           </button>
         </div>
+        <br><br><br>
       </aside>
 
       <main class="flex-1 flex flex-col min-w-0 bg-[#f8fafc]">
@@ -415,6 +427,19 @@
           <div id="view-permissions" class="hidden animate-fade-in p-4 md:p-6">
             <div id="permissions-content-area"></div>
           </div>
+
+          <section id="view-row-policy" class="hidden min-h-screen bg-slate-50/50 p-6 md:p-10 animate-fade-in">
+  
+  <div id="row-policy-container" class="max-w-6xl mx-auto">
+    <div class="flex items-center justify-center p-20">
+      <div class="text-center">
+        <i class="fa-solid fa-shield-halved fa-spin text-slate-200 text-5xl mb-4"></i>
+        <p class="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Initializing Security Engine...</p>
+      </div>
+    </div>
+  </div>
+
+</section>
         </div>
       </main>
 
@@ -538,6 +563,7 @@
     <script src="studio.js"></script>
     <script src="table.js"></script>
     <script src="automation.js"></script>
+    <script src="row_policy.js"></script>
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {

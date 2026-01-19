@@ -542,6 +542,7 @@ const app = {
       "view-dashboard-builder", // Tambahkan ini agar tidak "nyangkut"
       "automation-builder-section",
       "view-permissions",
+      "view-row-policy",
     ];
 
     views.forEach((v) => {
@@ -859,330 +860,82 @@ const app = {
     return perm[action] === true;
   },
 
-  async loadResource(forceRefresh = false) {
-    const vm = document.getElementById("view-mode")?.value || "active";
-    const btnRefresh = document.getElementById("btn-refresh");
-    const btnAdd = document.getElementById("btn-add");
-    const titleEl = document.getElementById("cur-title");
 
-    /* =====================================================
-     * UI START
-     * ===================================================== */
-    if (btnRefresh) btnRefresh.classList.add("animate-spin");
-    if (titleEl) {
-      titleEl.innerText = "SYNC... " + this.currentTable.toUpperCase() + "...";
-    }
 
-    if (forceRefresh) {
-      this.resourceCache[this.currentTable] = [];
-    }
-
-    try {
-      /* =====================================================
-       * 0. LOAD TABLE UTAMA
-       * ===================================================== */
-      const d = await this.get({
-        action: "read",
-        table: this.currentTable,
-        viewMode: vm,
-        _t: forceRefresh ? Date.now() : null,
-      });
-
-      if (btnRefresh) btnRefresh.classList.remove("animate-spin");
-
-      if (!d || d.success !== true) {
-        throw new Error(d?.message || "Invalid response");
-      }
-
-      /* =====================================================
-       * 1. SCHEMA NORMALIZATION (PATUH TOTAL)
-       * ===================================================== */
-      const rawSchema = d.schema;
-      this.schema = {};
-
-      if (
-        rawSchema &&
-        typeof rawSchema === "object" &&
-        !Array.isArray(rawSchema)
-      ) {
-        // Native schema object (v44+)
-        this.schema = rawSchema;
-      } else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-        // Legacy fallback
-        const headers = rawSchema[0];
-        const configs = rawSchema[1];
-
-        headers.forEach((h, i) => {
-          let cfg = configs[i];
-          if (typeof cfg === "string") {
-            try {
-              cfg = JSON.parse(cfg);
-            } catch {
-              cfg = {};
-            }
-          }
-          this.schema[h] = { ...cfg, name: h, headerIdx: i };
-        });
-      }
-
-      // console.table(this.schema);
-
-      /* =====================================================
-       * 2. MODES & ROW CACHE (TABLE AKTIF)
-       * ===================================================== */
-      this.modes = d.modes || {
-        add: { can: true },
-        edit: { can: true },
-        delete: { can: true },
-        browse: { can: true },
-      };
-
-      const rows = Array.isArray(d.rows) ? d.rows : [];
-      this.resourceCache[this.currentTable] = rows;
-
-      /* =====================================================
-       * 3. 🔥 LOOKUP PRELOAD ENGINE (BENAR & AMAN)
-       * ===================================================== */
-      this.lookupTables = this.lookupTables || new Set();
-
-      Object.values(this.schema).forEach((col) => {
-        if (
-          col.type === "LOOKUP" &&
-          col.lookup?.table &&
-          col.lookup.mode === "browse"
-        ) {
-          this.lookupTables.add(col.lookup.table);
-        }
-      });
-
-      for (const table of this.lookupTables) {
-        if (!this.resourceCache[table]) {
-          console.log("🔁 Preloading lookup table:", table);
-
-          const ref = await this.get({
-            action: "read",
-            table,
-            source: "lookup", // 🔑 INTENT WAJIB
-            mode: "browse", // 🔑 MODE WAJIB
-          });
-
-          if (ref && ref.success === true) {
-            this.resourceCache[table] = Array.isArray(ref.rows) ? ref.rows : [];
-          } else {
-            console.warn("⚠️ Lookup preload failed:", table);
-            this.resourceCache[table] = [];
-          }
-        }
-      }
-
-      /* =====================================================
-       * 4. ADD BUTTON VISIBILITY
-       * ===================================================== */
-      if (btnAdd) {
-        const canAdd =
-          this.modes?.add?.can === true || this.modes?.can_add === true;
-
-        if (canAdd && vm === "active") {
-          btnAdd.classList.replace("hidden", "flex");
-        } else {
-          btnAdd.classList.replace("flex", "hidden");
-        }
-      }
-
-      /* =====================================================
-       * 5. RENDER CORE
-       * ===================================================== */
-      this.renderTable(rows);
-
-      if (titleEl) {
-        titleEl.innerText = this.currentTable.replace(/_/g, " ").toUpperCase();
-      }
-    } catch (err) {
-      console.error("🔥 loadResource fatal:", err);
-
-      if (btnRefresh) btnRefresh.classList.remove("animate-spin");
-      if (titleEl) titleEl.innerText = "LOAD ERROR";
-
-      alert("Gagal memuat data");
-    }
-  },
-
-  // --- JEMBATAN GET: LOAD DATA DENGAN FAILOVER ---
-  async get(params = {}) {
-    try {
-      showLoading(true);
-      let dynamicEngineUrl = localStorage.getItem("sk_engine_url");
-      if (!dynamicEngineUrl) throw new Error("ENGINE_URL_NOT_FOUND");
-
-      let sheetId = localStorage.getItem("sk_sheet") || "";
-      if (sheetId.includes("/d/")) {
-        sheetId = sheetId.split("/d/")[1].split("/")[0];
-      }
-
-      const token = this.token || localStorage.getItem("sk_token") || "";
-      const serial = localStorage.getItem("sk_serial") || "";
-      if (!token) throw new Error("TOKEN_MISSING");
-
-      const baseParams = {
-        token,
-        sheet: sheetId,
-        ua: navigator.userAgent,
-        serial: serial,
-      };
-
-      const finalParams = { ...params };
-      if (params.source === "lookup") {
-        finalParams.mode = params.mode || "browse";
-        finalParams.source = "lookup";
-        delete finalParams.page;
-        delete finalParams.per_page;
-      }
-
-      const q = new URLSearchParams({
-        ...finalParams,
-        ...baseParams,
-      }).toString();
-
-      const res = await fetch(`${dynamicEngineUrl}?${q}`, {
-        method: "GET",
-        credentials: "omit",
-      });
-
-      // --- TRIGER TERIAK JIKA OVERLOAD (429/503) ---
-      if (res.status === 429 || res.status === 503) {
-        console.warn("🚨 Worker Overload (GET). Menghubungi Master...");
-        const newUrl = await this.shoutToMaster();
-        if (newUrl) return this.get(params); // Retry otomatis
-      }
-
-      if (!res.ok) throw new Error(`HTTP_${res.status}`);
-      const data = await res.json();
-      showLoading(false);
-      return data;
-    } catch (e) {
-      console.error("GET_FATAL:", e);
-
-      // Jika koneksi putus (TypeError), coba minta engine baru
-      if (e.name === "TypeError" || e.message.includes("HTTP")) {
-        const newUrl = await this.shoutToMaster();
-        if (newUrl) return this.get(params);
-      }
-
-      showLoading(false);
-      return { success: false, message: e.message };
-    }
-  },
-
-  // --- JEMBATAN POST: COMMIT DATA DENGAN FAILOVER ---
-  async post(arg1, arg2) {
-    try {
-      const dynamicEngineUrl = localStorage.getItem("sk_engine_url");
-      const token = this.token || localStorage.getItem("sk_token") || "";
-      const serial = localStorage.getItem("sk_serial") || "";
-
-      let sheetId = localStorage.getItem("sk_sheet") || "";
-      if (sheetId.includes("/d/")) {
-        sheetId = sheetId.split("/d/")[1].split("/")[0];
-      }
-
-      let finalPayload;
-      if (typeof arg1 === "object" && !arg2) {
-        finalPayload = {
-          ...arg1,
-          token,
-          sheet: sheetId,
-          ua: navigator.userAgent,
-          serial,
-        };
-      } else {
-        finalPayload = {
-          action: arg1,
-          table: this.currentTable,
-          data: arg2,
-          token,
-          sheet: sheetId,
-          ua: navigator.userAgent,
-          serial,
-        };
-      }
-
-      const res = await fetch(dynamicEngineUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(finalPayload),
-      });
-
-      // --- TRIGER TERIAK JIKA OVERLOAD ---
-      if (res.status === 429 || res.status === 503) {
-        console.warn("🚨 Worker Overload (POST). Menghubungi Master...");
-        const newUrl = await this.shoutToMaster();
-        if (newUrl) return this.post(arg1, arg2); // Retry otomatis
-      }
-
-      return await res.json();
-    } catch (e) {
-      console.error("[SK-ERROR] Post Error:", e);
-
-      // Auto-rescue jika koneksi gagal total
-      const newUrl = await this.shoutToMaster();
-      if (newUrl) return this.post(arg1, arg2);
-
-      return { success: false, message: "Koneksi ke Engine Terputus" };
-    }
-  },
 
   // --- FUNGSI EMERGENCY RESCUE FE (Upgrade) ---
   // --- FUNGSI EMERGENCY RESCUE FE (Fixed CORS) ---
-  async shoutToMaster() {
-    try {
-      const serial = localStorage.getItem("sk_serial") || "N/A";
-      const failedUrl = localStorage.getItem("sk_engine_url") || "N/A";
-      const email = localStorage.getItem("sk_email") || "N/A";
+/**
+ * ============================================================
+ * INTELLIGENT RESCUE ENGINE (v2)
+ * ============================================================
+ * Goal: Only shout when GAS is overloaded (429 / Service Limit)
+ * Prevent: Spamming Master on regular client-side errors.
+ * ============================================================
+ */
 
-      const payload = {
-        action: "emergency_rescue",
-        serial: serial,
-        failed_url: failedUrl,
-        user_email: email,
-      };
+async shoutToMaster(errorContext = null) {
+  // 1. FILTER: Deteksi apakah error adalah Overload GAS
+  const errorMsg = errorContext?.toString().toLowerCase() || "";
+  
+  // Deteksi limit GAS: Concurrent invocations, rate limit, atau HTTP 429
+  const isOverload = 
+    errorMsg.includes("limit") || 
+    errorMsg.includes("concurrent") || 
+    errorMsg.includes("too many") || 
+    errorMsg.includes("429");
 
-      console.log("🚨 [Rescue FE] Mengirim shout ke master:", payload);
-
-      // SOLUSI CORS: Gunakan method POST tanpa Header application/json
-      const res = await fetch(BASE_MASTER_URL, {
-        method: "POST",
-        // Kita gunakan text/plain agar browser tidak melakukan preflight OPTIONS
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify(payload),
-      });
-
-      const resultText = await res.text();
-      let result;
-
-      try {
-        result = JSON.parse(resultText);
-      } catch (e) {
-        console.error(
-          "🔥 [Rescue FE] Respon Master bukan JSON valid:",
-          resultText
-        );
-        return null;
-      }
-
-      if (result.success && result.new_engine_url) {
-        localStorage.setItem("sk_engine_url", result.new_engine_url);
-        console.log(
-          `🚑 [Rescue FE] Sukses! Engine Baru: ${result.new_engine_url}`
-        );
-        return result.new_engine_url;
-      } else {
-        console.warn("⚠️ [Rescue FE] Master menolak shout:", result);
-      }
-    } catch (err) {
-      console.error("🔥 [Rescue FE] Master Engine tidak merespon!", err);
-    }
+  if (!isOverload) {
+    console.log("ℹ️ [Rescue FE] Error biasa terdeteksi. Master tidak perlu tahu.");
     return null;
-  },
+  }
+
+  // 2. ACTION: Hanya teriak jika terindikasi Overload
+  try {
+    const serial = localStorage.getItem("sk_serial") || "N/A";
+    const failedUrl = localStorage.getItem("sk_engine_url") || "N/A";
+    const email = localStorage.getItem("sk_email") || "N/A";
+
+    const payload = {
+      action: "emergency_rescue",
+      serial: serial,
+      failed_url: failedUrl,
+      user_email: email,
+      reason: "GAS_OVERLOAD_DETECTED"
+    };
+
+    console.warn("🚨 [Rescue FE] ENGINE OVERLOAD! Menghubungi Master untuk relokasi...");
+
+    // SOLUSI CORS: Gunakan text/plain agar Master menerima payload tanpa Preflight
+    const res = await fetch(BASE_MASTER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+
+    const resultText = await res.text();
+    let result;
+
+    try {
+      result = JSON.parse(resultText);
+    } catch (e) {
+      console.error("🔥 [Rescue FE] Master merespon tapi format rusak.");
+      return null;
+    }
+
+    if (result.success && result.new_engine_url) {
+      // Update engine lokal agar request berikutnya langsung ke engine baru
+      localStorage.setItem("sk_engine_url", result.new_engine_url);
+      console.log(`🚑 [Rescue FE] RELOKASI SUKSES! Engine Baru: ${result.new_engine_url}`);
+      return result.new_engine_url;
+    } else {
+      console.warn("⚠️ [Rescue FE] Master menolak memberikan engine baru:", result);
+    }
+  } catch (err) {
+    console.error("🔥 [Rescue FE] Master Engine juga sedang down atau unreachable!");
+  }
+  return null;
+},
 
   async init() {
     if (!this.token) return;
@@ -1264,11 +1017,335 @@ const app = {
     if (titleEl) titleEl.innerText = "SYSTEM READY";
   },
 
-  // async testShout() {
-  //   const newEngine = await this.shoutToMaster();
-  //   console.log('Hasil Test Shout:', newEngine ? 'BERHASIL: ' + newEngine : 'GAGAL');
-  // },
+  // --- JEMBATAN GET: LOAD DATA ---
+  async get(params = {}, retryCount = 0) {
+    const MAX_RETRIES = 2;
+    try {
+      showLoading(true);
+      let dynamicEngineUrl = localStorage.getItem("sk_engine_url");
+      if (!dynamicEngineUrl) throw new Error("ENGINE_URL_NOT_FOUND");
+
+      // Extract Sheet ID
+      let sheetId = localStorage.getItem("sk_sheet") || "";
+      if (sheetId.includes("/d/")) {
+        sheetId = sheetId.split("/d/")[1].split("/")[0];
+      }
+
+      const token = this.token || localStorage.getItem("sk_token") || "";
+      const serial = localStorage.getItem("sk_serial") || "";
+      if (!token) throw new Error("TOKEN_MISSING");
+
+      const baseParams = {
+        token,
+        sheet: sheetId,
+        ua: navigator.userAgent,
+        serial: serial,
+      };
+
+      const finalParams = { ...params };
+      if (params.source === "lookup") {
+        finalParams.mode = params.mode || "browse";
+        finalParams.source = "lookup";
+        delete finalParams.page;
+        delete finalParams.per_page;
+      }
+
+      const q = new URLSearchParams({ ...finalParams, ...baseParams }).toString();
+
+      const res = await fetch(`${dynamicEngineUrl}?${q}`, {
+        method: "GET",
+        credentials: "omit",
+      });
+
+      // --- TRIGER SMART SHOUT (429/503) ---
+      if ((res.status === 429 || res.status === 503) && retryCount < MAX_RETRIES) {
+        console.warn(`🚨 Overload detected (${res.status}). Attempt ${retryCount + 1}`);
+        const newUrl = await this.shoutToMaster(`HTTP_${res.status}_OVERLOAD`);
+        if (newUrl) return this.get(params, retryCount + 1);
+      }
+
+      if (!res.ok) throw new Error(`HTTP_${res.status}`);
+      
+      const data = await res.json();
+      showLoading(false);
+      return data;
+
+    } catch (e) {
+      console.error("GET_FATAL:", e);
+
+      // Smart Failover hanya jika Error Relevan (Koneksi Putus/Limit)
+      if (retryCount < MAX_RETRIES) {
+        const newUrl = await this.shoutToMaster(e); // Filter overload di sini
+        if (newUrl) return this.get(params, retryCount + 1);
+      }
+
+      showLoading(false);
+      return { success: false, message: e.message };
+    }
+  },
+
+  // --- JEMBATAN POST: COMMIT DATA ---
+  async post(arg1, arg2, retryCount = 0) {
+    const MAX_RETRIES = 2;
+    try {
+      const dynamicEngineUrl = localStorage.getItem("sk_engine_url");
+      const token = this.token || localStorage.getItem("sk_token") || "";
+      const serial = localStorage.getItem("sk_serial") || "";
+
+      let sheetId = localStorage.getItem("sk_sheet") || "";
+      if (sheetId.includes("/d/")) {
+        sheetId = sheetId.split("/d/")[1].split("/")[0];
+      }
+
+      let finalPayload;
+      if (typeof arg1 === "object" && !arg2) {
+        finalPayload = { ...arg1, token, sheet: sheetId, ua: navigator.userAgent, serial };
+      } else {
+        finalPayload = {
+          action: arg1,
+          table: this.currentTable,
+          data: arg2,
+          token,
+          sheet: sheetId,
+          ua: navigator.userAgent,
+          serial,
+        };
+      }
+
+      const res = await fetch(dynamicEngineUrl, {
+        method: "POST",
+        // TIPS: Gunakan text/plain jika GAS sering kena preflight CORS
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(finalPayload),
+      });
+
+      // --- TRIGER SMART SHOUT ---
+      if ((res.status === 429 || res.status === 503) && retryCount < MAX_RETRIES) {
+        console.warn(`🚨 Overload detected pada POST. Attempt ${retryCount + 1}`);
+        const newUrl = await this.shoutToMaster("POST_OVERLOAD_429");
+        if (newUrl) return this.post(arg1, arg2, retryCount + 1);
+      }
+
+      const result = await res.json();
+      return result;
+
+    } catch (e) {
+      console.error("[SK-ERROR] Post Error:", e);
+
+      // Rescue jika koneksi gagal & masih ada jatah retry
+      if (retryCount < MAX_RETRIES) {
+        const newUrl = await this.shoutToMaster(e);
+        if (newUrl) return this.post(arg1, arg2, retryCount + 1);
+      }
+
+      return { success: false, message: "Koneksi ke Engine Terputus: " + e.message };
+    }
+  },
+
+  /**
+ * ============================================================
+ * CORE DATA LOADER: loadResource
+ * ============================================================
+ * Fungsi utuh untuk sinkronisasi data dari Google Sheets.
+ * Mendukung Schema Normalization, RLS Protection, dan Lookup Preloading.
+ */
+/**
+ * STARKIT VOYAGER FRONTEND ENGINE - v44.4.1 (REFERENCE MODE PATCHED)
+ * Memastikan tabel lookup dengan mode "reference" terdeteksi dan di-cache.
+ */
+async loadResource(forceRefresh = false) {
+  const vm = document.getElementById("view-mode")?.value || "active";
+  const btnRefresh = document.getElementById("btn-refresh");
+  const btnAdd = document.getElementById("btn-add");
+  const titleEl = document.getElementById("cur-title");
+
+  /* =====================================================
+   * UI START - Memberikan feedback visual kepada user
+   * ===================================================== */
+  if (btnRefresh) btnRefresh.classList.add("animate-spin");
+  if (titleEl) {
+    titleEl.innerText = "SYNC... " + this.currentTable.toUpperCase() + "...";
+  }
+
+  // Jika force refresh, kosongkan cache agar mengambil data paling fresh (RLS Update)
+  if (forceRefresh) {
+    this.resourceCache[this.currentTable] = [];
+  }
+
+  try {
+    /* =====================================================
+     * 0. LOAD TABLE UTAMA (Memicu RLS di Backend)
+     * ===================================================== */
+    const d = await this.get({
+      action: "read",
+      table: this.currentTable,
+      viewMode: vm,
+      ua: navigator.userAgent, // Wajib disertakan untuk validasi Security di BE
+      _t: forceRefresh ? Date.now() : null,
+    });
+
+    if (btnRefresh) btnRefresh.classList.remove("animate-spin");
+
+    if (!d || d.success !== true) {
+      throw new Error(d?.message || "Invalid response");
+    }
+
+    /* =====================================================
+     * 1. SCHEMA NORMALIZATION (PATUH TOTAL)
+     * ===================================================== */
+    const rawSchema = d.schema;
+    this.schema = {};
+
+    if (
+      rawSchema &&
+      typeof rawSchema === "object" &&
+      !Array.isArray(rawSchema)
+    ) {
+      // Native schema object (v44+)
+      this.schema = rawSchema;
+    } else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
+      // Legacy fallback (Support untuk versi lama)
+      const headers = rawSchema[0];
+      const configs = rawSchema[1];
+
+      headers.forEach((h, i) => {
+        let cfg = configs[i];
+        if (typeof cfg === "string") {
+          try {
+            cfg = JSON.parse(cfg);
+          } catch {
+            cfg = {};
+          }
+        }
+        this.schema[h] = { ...cfg, name: h, headerIdx: i };
+      });
+    }
+
+    /* =====================================================
+     * 2. MODES & ROW CACHE (TABLE AKTIF)
+     * ===================================================== */
+    this.modes = d.modes || {
+      add: { can: true },
+      edit: { can: true },
+      delete: { can: true },
+      browse: { can: true },
+    };
+
+    // d.rows di sini sudah disaring secara otomatis oleh BE melalui RLS
+    const rows = Array.isArray(d.rows) ? d.rows : [];
+    this.resourceCache[this.currentTable] = rows;
+
+    /* =====================================================
+     * 3. 🔥 LOOKUP PRELOAD ENGINE (FIXED FOR REFERENCE MODE)
+     * ===================================================== */
+    // Reset lookupTables agar tidak membawa dependensi dari tabel sebelumnya
+    this.lookupTables = new Set(); 
+
+    Object.values(this.schema).forEach((col) => {
+      if (
+        col.type === "LOOKUP" &&
+        col.lookup?.table &&
+        (col.lookup.mode === "browse" || col.lookup.mode === "reference")
+      ) {
+        this.lookupTables.add(col.lookup.table);
+      }
+    });
+
+    // Jalankan pengambilan data untuk setiap tabel lookup yang ditemukan
+    for (const table of this.lookupTables) {
+      // Hanya ambil jika belum ada di cache atau sedang force refresh
+      if (!this.resourceCache[table] || forceRefresh) {
+        console.log(`🔁 Preloading lookup [${table}] dengan mode: reference/browse`);
+
+        const ref = await this.get({
+          action: "read",
+          table: table,
+          ua: navigator.userAgent,
+          source: "lookup", // 🔑 INTENT: Memberitahu BE untuk memicu getLookupFields()
+          mode: "browse",   // 🔑 MODE: Memberitahu BE ini request pembacaan data
+        });
+
+        if (ref && ref.success === true) {
+          // Simpan data "clean" (tanpa kolom sensitif) ke cache
+          this.resourceCache[table] = Array.isArray(ref.rows) ? ref.rows : [];
+          console.log(`✅ Lookup [${table}] berhasil di-cache. Total: ${this.resourceCache[table].length} baris.`);
+        } else {
+          console.warn(`⚠️ Preload gagal untuk tabel: ${table}. Pastikan tabel ada di Spreadsheet.`);
+          this.resourceCache[table] = [];
+        }
+      }
+    }
+
+    /* =====================================================
+     * 4. ADD BUTTON VISIBILITY
+     * ===================================================== */
+    if (btnAdd) {
+      const canAdd =
+        this.modes?.add?.can === true || this.modes?.can_add === true;
+
+      if (canAdd && vm === "active") {
+        btnAdd.classList.replace("hidden", "flex");
+      } else {
+        btnAdd.classList.replace("flex", "hidden");
+      }
+    }
+
+    /* =====================================================
+     * 5. RENDER CORE
+     * ===================================================== */
+    this.renderTable(rows);
+
+    if (titleEl) {
+      titleEl.innerText = this.currentTable.replace(/_/g, " ").toUpperCase();
+    }
+    
+    // Feedback ke log jika RLS aktif
+    if (d.query_mode === "lookup") {
+      console.info("🛡️ Row Level Security: Active and Applied.");
+    }
+
+  } catch (err) {
+    console.error("🔥 loadResource fatal:", err);
+
+    if (btnRefresh) btnRefresh.classList.remove("animate-spin");
+    if (titleEl) titleEl.innerText = "LOAD ERROR";
+
+    alert("Gagal memuat data: " + err.message);
+  }
+}
+
+//  async testShout() {
+//     console.log('🚀 [Test] Memulai pengujian komunikasi ke Master...');
+    
+//     // Karena ini test, kita paksa kirim pesan 'OVERLOAD_TEST' 
+//     // agar lolos filter 'isOverload' di fungsi shoutToMaster
+//     const newEngine = await this.shoutToMaster('manual_overload_test_429');
+    
+//     if (newEngine) {
+//       console.log('✅ [Test Result] BERHASIL: Engine baru diterima ->', newEngine);
+//     } else {
+//       console.error('❌ [Test Result] GAGAL: Master menolak atau tidak ada engine tersedia.');
+//     }
+//   }
+
+
 };
 app.init();
 
-// app.testShout();
+// Menjalankan test dengan timeout 1 menit (60.000 ms)
+// console.log('⏳ [System] Menunggu 1 menit sebelum menjalankan Test Shout...');
+
+// // Log hitung mundur setiap 15 detik agar Juragan tidak mengira aplikasi hang
+// let secondsLeft = 60;
+// const timer = setInterval(() => {
+//   secondsLeft -= 15;
+//   if (secondsLeft > 0) {
+//     console.log(`... ${secondsLeft} detik tersisa sebelum test dimulai.`);
+//   } else {
+//     clearInterval(timer);
+//   }
+// }, 15000);
+
+// setTimeout(() => {
+//   app.testShout();
+// }, 60000);
