@@ -14,22 +14,66 @@ Object.assign(app, {
   /**
    * 1. SAVE TO LOCAL STORAGE & SYNC
    */
-  saveDashboardConfig() {
+async saveDashboardConfig() {
+    const btn = document.getElementById("btn-save-dashboard"); // Pastikan ID tombol sesuai di HTML
+    
+    // 1. Persiapan Payload (Seluruh Konfigurasi Dashboard)
+    // Sesuai prinsip Juragan: Lengkap & Terstruktur
+    const payload = this.dashboardConfigs.map(conf => ({
+      name: conf.name || "Untitled Widget",
+      table: conf.table || "",
+      type: conf.type || "COUNT",
+      column: conf.column || "",
+      // VARS harus di-string-kan agar tidak merusak struktur kolom Spreadsheet
+      vars: JSON.stringify(conf.vars || []), 
+      formula: conf.formula || "",
+      color: conf.color || "slate",
+      unit: conf.unit || "Rp",
+      icon: conf.icon || "fa-wallet",
+      allowed_role: conf.allowed_role || "all" // Field baru yang kita tambahkan
+    }));
+
+    // 2. UI Feedback - Sultan UI Mode
+    const originalText = btn ? btn.innerText : "SAVE DASHBOARD";
+    if (btn) {
+      btn.disabled = true;
+      btn.innerText = "☁️ SYNCING TO CLOUD...";
+      btn.classList.add("opacity-50", "cursor-not-allowed");
+    }
+
     try {
-      const dataToSave = this.dashboardConfigs || [];
+      // 3. Kirim ke Backend menggunakan this.post (Pola Konsisten)
+      // Kita kirim action 'save_dashboard' untuk dihandle di Code.gs
+      const res = await this.post({
+        action: "save_dashboard", 
+        table: "config_dashboard",
+        data: payload
+      });
 
-      // Simpan permanen ke LS agar saat refresh tidak hilang
-      localStorage.setItem("sk_dashboard_backup", JSON.stringify(dataToSave));
+      if (res.success) {
+        if (btn) btn.innerText = "✅ SYNCED!";
+        
+        // Beri jeda visual sebelum mengembalikan tombol
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = originalText;
+            btn.classList.remove("opacity-50", "cursor-not-allowed");
+          }
+        }, 1500);
+        
+        console.log("Dashboard Policy Deployed:", payload);
+      } else {
+        throw new Error(res.message || "Cloud Sync Failed");
+      }
 
-      // Update state aktif
-      this.dashboardConfig = [...dataToSave];
-
-      console.log("💾 [DASHBOARD] Tersimpan permanen di Local Storage.");
-      alert("✅ Konfigurasi Tersimpan! Data tidak akan hilang saat refresh.");
-
-      this.renderDashboard();
-    } catch (e) {
-      console.error("🔥 Gagal menyimpan:", e);
+    } catch (err) {
+      alert("❌ Dashboard Save Failed: " + err.message);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerText = originalText;
+        btn.classList.remove("opacity-50", "cursor-not-allowed");
+      }
     }
   },
 
@@ -309,9 +353,13 @@ Object.assign(app, {
     this.renderDashboardBuilder();
   },
 
-  renderDashboardBuilder: function () {
+
+renderDashboardBuilder: function () {
     const container = document.getElementById("db-builder-container");
     if (!container) return;
+
+    // Ambil data roles dari cache untuk dropdown
+    const availableRoles = this.resourceCache.roles || [];
 
     // Starter jika kosong
     if (this.dashboardConfigs.length === 0) {
@@ -325,6 +373,7 @@ Object.assign(app, {
         color: "slate",
         unit: "Rp",
         icon: "fa-wallet",
+        allowed_role: "all" // Default semua role bisa lihat
       });
     }
 
@@ -362,7 +411,21 @@ Object.assign(app, {
           </button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div>
+            <label class="block text-[9px] font-black text-indigo-500 uppercase mb-2 ml-2 tracking-widest">
+              <i class="fa-solid fa-shield-halved mr-1"></i> Izin Akses Role
+            </label>
+            <select onchange="app.updateWidgetConfig(${index}, 'allowed_role', this.value)" 
+              class="w-full p-4 bg-indigo-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-indigo-500/20 text-indigo-700">
+              <option value="all" ${conf.allowed_role === 'all' ? 'selected' : ''}>🌍 SEMUA ROLE</option>
+              ${availableRoles.map(r => {
+                const rName = r.role_name || r.name;
+                return `<option value="${rName}" ${conf.allowed_role === rName ? 'selected' : ''}>🔐 ${rName.toUpperCase()}</option>`;
+              }).join("")}
+            </select>
+          </div>
+
           <div>
             <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Metode Hitung</label>
             <select onchange="app.updateWidgetConfig(${index}, 'type', this.value); app.renderDashboardBuilder();" 
@@ -494,24 +557,12 @@ Object.assign(app, {
             <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Visual Icon</label>
             <select onchange="app.updateWidgetConfig(${index}, 'icon', this.value)" 
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
-              <option value="fa-wallet" ${
-                conf.icon === "fa-wallet" ? "selected" : ""
-              }>💰 Keuangan / Saldo</option>
-              <option value="fa-cart-shopping" ${
-                conf.icon === "fa-cart-shopping" ? "selected" : ""
-              }>🛒 Penjualan / Transaksi</option>
-              <option value="fa-users" ${
-                conf.icon === "fa-users" ? "selected" : ""
-              }>👥 Pelanggan / User</option>
-              <option value="fa-box-archive" ${
-                conf.icon === "fa-box-archive" ? "selected" : ""
-              }>📦 Stok / Inventori</option>
-              <option value="fa-chart-line" ${
-                conf.icon === "fa-chart-line" ? "selected" : ""
-              }>📈 Tren Data</option>
-              <option value="fa-calculator" ${
-                conf.icon === "fa-calculator" ? "selected" : ""
-              }>🧮 Perhitungan</option>
+              <option value="fa-wallet" ${conf.icon === "fa-wallet" ? "selected" : ""}>💰 Keuangan / Saldo</option>
+              <option value="fa-cart-shopping" ${conf.icon === "fa-cart-shopping" ? "selected" : ""}>🛒 Penjualan / Transaksi</option>
+              <option value="fa-users" ${conf.icon === "fa-users" ? "selected" : ""}>👥 Pelanggan / User</option>
+              <option value="fa-box-archive" ${conf.icon === "fa-box-archive" ? "selected" : ""}>📦 Stok / Inventori</option>
+              <option value="fa-chart-line" ${conf.icon === "fa-chart-line" ? "selected" : ""}>📈 Tren Data</option>
+              <option value="fa-calculator" ${conf.icon === "fa-calculator" ? "selected" : ""}>🧮 Perhitungan</option>
             </select>
           </div>
 
@@ -520,38 +571,22 @@ Object.assign(app, {
             <select onchange="app.updateWidgetConfig(${index}, 'color', this.value)" 
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
               <optgroup label="Standar">
-                <option value="slate" ${
-                  conf.color === "slate" ? "selected" : ""
-                }>🌑 Dark Slate</option>
-                <option value="blue" ${
-                  conf.color === "blue" ? "selected" : ""
-                }>🔷 Ocean Blue</option>
-                <option value="emerald" ${
-                  conf.color === "emerald" ? "selected" : ""
-                }>🟢 Forest Green</option>
-                <option value="rose" ${
-                  conf.color === "rose" ? "selected" : ""
-                }>🔴 Vivid Red</option>
+                <option value="slate" ${conf.color === "slate" ? "selected" : ""}>🌑 Dark Slate</option>
+                <option value="blue" ${conf.color === "blue" ? "selected" : ""}>🔷 Ocean Blue</option>
+                <option value="emerald" ${conf.color === "emerald" ? "selected" : ""}>🟢 Forest Green</option>
+                <option value="rose" ${conf.color === "rose" ? "selected" : ""}>🔴 Vivid Red</option>
               </optgroup>
               <optgroup label="Premium">
-                <option value="amber" ${
-                  conf.color === "amber" ? "selected" : ""
-                }>🔶 Golden Amber</option>
-                <option value="violet" ${
-                  conf.color === "violet" ? "selected" : ""
-                }>🟣 Royal Violet</option>
-                <option value="cyan" ${
-                  conf.color === "cyan" ? "selected" : ""
-                }>💎 Crystal Cyan</option>
+                <option value="amber" ${conf.color === "amber" ? "selected" : ""}>🔶 Golden Amber</option>
+                <option value="violet" ${conf.color === "violet" ? "selected" : ""}>🟣 Royal Violet</option>
+                <option value="cyan" ${conf.color === "cyan" ? "selected" : ""}>💎 Crystal Cyan</option>
               </optgroup>
             </select>
           </div>
 
           <div>
             <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Satuan Unit</label>
-            <input type="text" value="${
-              conf.unit || "Rp"
-            }" placeholder="Rp / Pcs / %"
+            <input type="text" value="${conf.unit || "Rp"}" placeholder="Rp / Pcs / %"
               onchange="app.updateWidgetConfig(${index}, 'unit', this.value)"
               class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold text-center outline-none">
           </div>
@@ -561,6 +596,13 @@ Object.assign(app, {
     `;
       })
       .join("");
+  },
+
+  // FUNGSI HANDLER BARU UNTUK ROLE
+  updateWidgetRoles: function(index, selectElement) {
+    const selectedOptions = Array.from(selectElement.selectedOptions).map(opt => opt.value);
+    this.dashboardConfigs[index].allowed_roles = selectedOptions;
+    console.log(`🛡️ Role Updated for Widget ${index}:`, selectedOptions);
   },
 
   deleteWidgetConfig(index) {

@@ -653,115 +653,7 @@ const app = {
   // 1. Fungsi Navigasi (Pastikan resetViews sudah ada di object app)
   // GANTI openAccessControl Anda dengan versi LIVE ini:
   // 1. Fungsi Navigasi (Dynamic Version)
-  async openAccessControl() {
-    this.resetViews();
 
-    const view = document.getElementById("view-permissions");
-    const container = document.getElementById("permissions-content-area");
-    if (view) view.classList.remove("hidden");
-    document.getElementById("cur-title").innerText = "ACCESS CONTROL";
-
-    // Tampilkan loading sebentar biar user tahu aplikasi sedang bekerja
-    container.innerHTML = `<div class="p-20 text-center font-black opacity-20 animate-pulse tracking-[0.5em]">SYNCING SECURITY...</div>`;
-
-    // AMBIL DATA LIVE DARI GOOGLE SHEETS
-    const res = await this.get({ action: "read", table: "config_permissions" });
-
-    if (res.success && res.rows) {
-      this.renderPermissions(res.rows);
-    } else {
-      container.innerHTML = `<div class="p-10 text-center text-red-500 font-bold uppercase">Sync Failed: ${res.message}</div>`;
-    }
-  },
-
-  // 2. Fungsi Renderer (Desain "Security Guard" Juragan)
-  renderPermissions(data) {
-    const container = document.getElementById("permissions-content-area");
-    if (!container) return;
-
-    // Helper agar tidak case-sensitive terhadap nama kolom di Sheets
-    const getVal = (obj, key) => {
-      const foundKey = Object.keys(obj).find(
-        (k) => k.toLowerCase() === key.toLowerCase()
-      );
-      return obj[foundKey] !== undefined ? obj[foundKey] : "";
-    };
-
-    let html = `
-          <div class="animate-fade-in pb-20 space-y-8">
-            <div class="flex flex-col gap-1 border-l-4 border-red-500 pl-6 py-2">
-              <h2 class="text-3xl font-black text-slate-900 tracking-tighter uppercase">Security Guard</h2>
-              <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.4em]">Access Control List • Policy Management</p>
-            </div>
-
-            <div class="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
-              <table class="w-full text-left">
-                <thead>
-                  <tr class="bg-slate-50 border-b border-slate-200 text-[9px] font-black uppercase text-slate-400 tracking-widest">
-                    <th class="px-8 py-6">Resource / Table</th>
-                    <th class="px-6 py-6 text-center">Role</th>
-                    <th class="px-4 py-6 text-center">Browse</th>
-                    <th class="px-4 py-6 text-center">Add</th>
-                    <th class="px-4 py-6 text-center">Edit</th>
-                    <th class="px-4 py-6 text-center">Delete</th>
-                    <th class="px-8 py-6">Policy</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-        `;
-
-    data.forEach((p) => {
-      const can = (val) =>
-        String(val).toUpperCase() === "TRUE"
-          ? '<div class="w-6 h-6 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-100"><i class="fa-solid fa-check text-[10px]"></i></div>'
-          : '<div class="w-6 h-6 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center mx-auto border border-slate-100"><i class="fa-solid fa-xmark text-[10px]"></i></div>';
-
-      const role = getVal(p, "role");
-      const policy = getVal(p, "ownership_policy");
-
-      html += `
-            <tr class="hover:bg-slate-50/50 transition-colors group">
-              <td class="px-8 py-5">
-                <span class="text-sm font-black text-slate-800 uppercase tracking-tight group-hover:text-blue-600">${getVal(
-                  p,
-                  "resource"
-                )}</span>
-              </td>
-              <td class="px-6 py-5 text-center">
-                <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter ${
-                  role === "admin"
-                    ? "bg-red-50 text-red-600"
-                    : "bg-blue-50 text-blue-600"
-                }">${role}</span>
-              </td>
-              <td class="px-4 py-5 text-center">${can(
-                getVal(p, "can_browse")
-              )}</td>
-              <td class="px-4 py-5 text-center">${can(
-                getVal(p, "can_add")
-              )}</td>
-              <td class="px-4 py-5 text-center">${can(
-                getVal(p, "can_edit")
-              )}</td>
-              <td class="px-4 py-5 text-center">${can(
-                getVal(p, "can_delete")
-              )}</td>
-              <td class="px-8 py-5">
-                <div class="flex items-center gap-2">
-                  <i class="fa-solid ${
-                    policy === "ALL"
-                      ? "fa-globe-asia text-blue-400"
-                      : "fa-user-lock text-orange-400"
-                  } text-xs"></i>
-                  <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">${policy}</span>
-                </div>
-              </td>
-            </tr>`;
-    });
-
-    html += `</tbody></table></div></div>`;
-    container.innerHTML = html;
-  },
 
   hideAllViews: function () {
     const views = [
@@ -958,6 +850,7 @@ async shoutToMaster(errorContext = null) {
 
     // 1️⃣ LOAD PERMISSION
     await this.loadPermissions();
+    this.loadDashboardConfig();
 
     // 2️⃣ LIST RESOURCE
     const resList = await this.get({ action: "listResources" });
@@ -1312,7 +1205,20 @@ async loadResource(forceRefresh = false) {
 
     alert("Gagal memuat data: " + err.message);
   }
-}
+},
+
+async loadDashboardConfig () {
+    const response = await this.callBackend({ action: "getDashboardConfig" });
+    if (response.success) {
+      // Pastikan jika data di database kosong/null, kita kasih default value
+      this.dashboardConfigs = response.data.map(item => ({
+        ...item,
+        vars: typeof item.vars === 'string' ? JSON.parse(item.vars) : (item.vars || []),
+        allowed_role: item.allowed_role || "all" // Fallback jika data lama belum punya role
+      }));
+      this.renderDashboardBuilder();
+    }
+  },
 
 //  async testShout() {
 //     console.log('🚀 [Test] Memulai pengujian komunikasi ke Master...');

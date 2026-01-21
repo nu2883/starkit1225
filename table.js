@@ -297,127 +297,116 @@ Object.assign(app, {
 
   // --- FORM GENERATOR (FIXED REQUIRED ATTRIBUTE + ENTER COMMIT) ---
   // --- FORM GENERATOR (FIXED REQUIRED ATTRIBUTE + ENTER COMMIT) ---
-  async openForm(data = null) {
-    this.editingId = data ? data.id : null;
-    const modal = document.getElementById("f-modal");
-    const container = document.getElementById("f-fields");
-    if (!modal || !container) return;
+// --- FORM GENERATOR (FLS & PERMISSION READY) ---
+  /**
+ * 🚀 OPEN FORM ENGINE (VERSION 10.4)
+ * Target: 1000 SA Users (Consistent Field Level Security)
+ * Fitur: Mengunci field berdasarkan policy baik saat NEW maupun EDIT.
+ */
+async openForm(data = null) {
+  this.editingId = data ? data.id : null;
+  const modal = document.getElementById("f-modal");
+  const container = document.getElementById("f-fields");
+  if (!modal || !container) return;
 
-    // Set judul modal
-    document.getElementById("modal-title").innerText = this.editingId
-      ? `EDIT ${this.currentTable.toUpperCase()}`
-      : `NEW ${this.currentTable.toUpperCase()}`;
-    modal.classList.replace("hidden", "flex");
+  // 1. Set judul modal & Tampilkan
+  document.getElementById("modal-title").innerText = this.editingId
+    ? `EDIT ${this.currentTable.toUpperCase()}`
+    : `NEW ${this.currentTable.toUpperCase()}`;
+  modal.classList.replace("hidden", "flex");
 
-    // Tentukan fields
-    let fields =
-      this.activeFields && this.activeFields.length > 0
-        ? this.activeFields
-        : Object.keys(this.schema || {});
-    fields = fields.filter(
-      (f) =>
-        ![
-          "id",
-          "created_at",
-          "created_by",
-          "deleted_at",
-          "is_deleted",
-          "salt",
-          "password",
-        ].includes(f)
-    );
+  // 2. Ambil Permission & Field Policy untuk Resource ini
+  const currentGov = this.modes || {}; 
+  const fieldPolicy = currentGov.field_policy || null; // Array of allowed fields (e.g., ["status", "catatan"])
 
-    // Bangun HTML form
-    let html = "";
-    for (const f of fields) {
-      const s =
-        this.schema && this.schema[f]
-          ? this.schema[f]
-          : {
-              type: "TEXT",
-              label: f.replace(/_/g, " ").toUpperCase(),
-              required: false,
-            };
-      if (s.hidden) continue;
+  // 3. Tentukan fields yang akan ditampilkan
+  let fields = this.activeFields && this.activeFields.length > 0
+      ? this.activeFields
+      : Object.keys(this.schema || {});
 
-      const val = data ? data[f] || "" : "";
-      const isLocked =
-        String(s.disabled).toLowerCase() === "true" ||
-        s.type === "AUTOFILL" ||
-        s.type === "FORMULA";
-      const isRequired = s.required === true;
-      const lockClass = isLocked
-        ? "bg-slate-100 text-slate-400 border-dashed"
-        : "bg-slate-50 text-slate-700";
-      const labelHtml = this.escapeHTML(s.label || f.replace(/_/g, " "));
-      const requiredMarker = isRequired
-        ? '<span class="text-red-500 ml-1">*</span>'
-        : "";
+  fields = fields.filter(f => ![
+        "id", "created_at", "created_by", "deleted_at",
+        "is_deleted", "salt", "password"
+      ].includes(f)
+  );
 
-      html += `<div class="mb-4 text-left">
-      <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest text-left">
-        ${labelHtml}${requiredMarker}
-      </label>`;
+  let html = "";
+  for (const f of fields) {
+    const s = this.schema && this.schema[f] ? this.schema[f] : {
+            type: "TEXT",
+            label: f.replace(/_/g, " ").toUpperCase(),
+            required: false,
+          };
+    if (s.hidden) continue;
 
-      if (s.type === "LOOKUP" && s.lookup) {
-        html += `<select id="f-${f}" name="${f}" ${
-          isRequired ? "required" : ""
-        } onchange="app.triggerLookup('${f}', this.value)" 
-                class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none bg-slate-50">
-              </select>`;
-      } else {
-        const inputType =
-          s.type === "NUMBER" || s.type === "CURRENCY"
-            ? "number"
-            : s.type === "DATE"
-            ? "date"
-            : "text";
-        html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" 
-                ${isLocked ? "disabled" : ""} 
-                ${isRequired ? "required" : ""} 
-                oninput="app.runLiveFormula()" 
-                class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">`;
-      }
+    const val = data ? data[f] || "" : "";
 
-      if (isLocked)
-        html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${val}">`;
-      html += `</div>`;
+    // 🛡️ LOGIKA FIELD LEVEL SECURITY (FLS) - UNIVERSAL GUARD
+    // Sistem mengunci field jika:
+    // A. Memang disabled secara permanen di Schema (Autofill/Formula)
+    // B. Ada fieldPolicy AND field ini tidak terdaftar di dalamnya (Policy Enforcement)
+    
+    let isLockedBySystem = String(s.disabled).toLowerCase() === "true" || 
+                           s.type === "AUTOFILL" || 
+                           s.type === "FORMULA";
+    
+    let isLockedByPolicy = false;
+    if (fieldPolicy && Array.isArray(fieldPolicy)) {
+      // Berlaku untuk CREATE & EDIT: Jika fieldPolicy ada isinya, 
+      // maka field yang tidak terdaftar otomatis terkunci.
+      isLockedByPolicy = !fieldPolicy.includes(f.toLowerCase());
     }
 
-    container.innerHTML = html;
+    const isLocked = isLockedBySystem || isLockedByPolicy;
+    const isRequired = s.required === true;
+    
+    // Styling: Berikan visual berbeda untuk field yang terkunci oleh kebijakan
+    const lockClass = isLocked
+      ? "bg-slate-100 text-slate-400 border-dashed cursor-not-allowed"
+      : "bg-slate-50 text-slate-700";
+    
+    const labelHtml = this.escapeHTML(s.label || f.replace(/_/g, " "));
+    const requiredMarker = isRequired && !isLocked ? '<span class="text-red-500 ml-1">*</span>' : "";
 
-    // Populate lookup fields
-    for (const f of fields) {
-      const s = this.schema ? this.schema[f] : null;
-      if (s?.type === "LOOKUP")
-        await this.populateLookup(
-          f,
-          s.lookup.table,
-          s.lookup.field,
-          data ? data[f] : ""
-        );
+    html += `<div class="mb-4 text-left">
+    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest text-left">
+      ${labelHtml}${requiredMarker} ${isLockedByPolicy ? '<i class="fa-solid fa-lock ml-1 text-[8px]" title="Restricted by Policy"></i>' : ''}
+    </label>`;
+
+    if (s.type === "LOOKUP" && s.lookup) {
+      html += `<select id="f-${f}" name="${f}" ${isRequired ? "required" : ""} 
+               ${isLocked ? "disabled" : ""}
+               onchange="app.triggerLookup('${f}', this.value)" 
+               class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">
+               </select>`;
+    } else {
+      const inputType = s.type === "NUMBER" || s.type === "CURRENCY" ? "number" : s.type === "DATE" ? "date" : "text";
+      html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" 
+              ${isLocked ? "disabled" : ""} 
+              ${isRequired ? "required" : ""} 
+              oninput="app.runLiveFormula()" 
+              class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">`;
     }
 
-    this.runLiveFormula();
+    // Shield: Hidden input agar data yang "readonly" tetap terikut saat save (untuk keperluan formula/autofill)
+    if (isLocked) html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${val}">`;
+    html += `</div>`;
+  }
 
-    // --- EVENT LISTENER: Enter = commit, Escape = close ---
-    if (this._formKeyHandler)
-      document.removeEventListener("keydown", this._formKeyHandler);
+  container.innerHTML = html;
 
-    const keyHandler = (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        document.getElementById("btn-commit")?.click(); // PASTIKAN ID BENAR
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        this.closeForm();
-      }
-    };
+  // 4. Populate lookup fields
+  for (const f of fields) {
+    const s = this.schema ? this.schema[f] : null;
+    if (s?.type === "LOOKUP")
+      await this.populateLookup(f, s.lookup.table, s.lookup.field, data ? data[f] : "");
+  }
 
-    this._formKeyHandler = keyHandler;
-    document.addEventListener("keydown", keyHandler);
-  },
+  this.runLiveFormula();
+  this.setupKeyHandlers(); 
+},
+
+
   commitForm() {
     // cukup trigger tombol save
     document.getElementById("btn-save")?.click();
