@@ -30,6 +30,7 @@ const app = {
     JSON.parse(localStorage.getItem("sk_dashboard_config")) || [],
   permissions: {}, // Sekarang berbentuk Object Map
   tableSortDesc: true, // default: terbaru di atas
+  _dashboardRetryOnce : false,
 
   async populateLookup(id, table, field, currentVal) {
     const el = document.getElementById(`f-${id}`);
@@ -472,41 +473,89 @@ const app = {
 
   // --- DASHBOARD SECTION ---
 
-  async selectResource(id) {
-    if (this.currentTable === id && this.currentView === "data") return;
+async selectResource(id) {
+  if (this.currentTable === id && this.currentView === "data") return;
 
-    // 1. Matikan semua view (termasuk dashboard & crud)
-    this.resetViews();
+  console.log(`[NAVIGATE] Switching to resource: ${id}`);
 
-    // 2. Set State
-    this.currentTable = id;
-    this.currentView = "data";
+  // ======================================================
+  // 1. CLEAN UP TOTAL (PENTING!)
+  // Bersihkan semua sisa data menu sebelumnya agar tidak "leak"
+  // ======================================================
+  this.resetViews();
+  
+  const head = document.getElementById("t-head");
+  const body = document.getElementById("t-body");
+  const pagination = document.getElementById("pagination-controls"); // Sesuaikan ID pagination Anda
+  const emptyState = document.getElementById("empty-state");
 
-    // 3. AKTIFKAN KEMBALI CONTAINER CRUD (Ini yang bikin tabel muncul)
-    const crudView = document.getElementById("view-crud");
-    const searchContainer = document.getElementById("search-container");
+  if (head) head.innerHTML = ""; 
+  if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading Permission...</td></tr>`;
+  if (pagination) pagination.innerHTML = "";
+  if (emptyState) emptyState.classList.add("hidden");
 
-    if (crudView) {
-      crudView.classList.remove("hidden"); // Membuka pintu utama
-      crudView.style.visibility = "visible"; // Memastikan terlihat
-    }
-    if (searchContainer) searchContainer.classList.remove("hidden");
+  // ======================================================
+  // 2. SET STATE & SYNC PERMISSIONS
+  // ======================================================
+  this.currentTable = id;
+  this.currentView = "data";
+  
+  const resourceKey = id.toLowerCase().trim();
+  let perm = this.permissions[resourceKey];
 
-    // 4. Update Header Judul
-    const titleEl = document.getElementById("cur-title");
-    if (titleEl) titleEl.innerText = id.replace(/_/g, " ").toUpperCase();
+  // Pastikan mode siap sebelum lanjut ke render
+  if (!perm) {
+    console.warn(`[SECURITY] Permission untuk ${id} tidak ditemukan. Fetching...`);
+    await this.loadPermissions();
+    perm = this.permissions[resourceKey];
+  }
 
-    this.syncSidebarUI(id);
+  this.modes = {
+    can_add: perm?.add === true,
+    can_edit: perm?.edit === true,
+    can_delete: perm?.delete === true,
+    policy: perm?.policy || "ALL"
+  };
 
-    // 5. Load Data
-    if (this.resourceCache[id]) {
-      this.schema = this.schemaCache[id]?.schema || {};
-      this.renderTable(this.resourceCache[id]);
-      this.loadResource();
-    } else {
-      await this.loadResource();
-    }
-  },
+  // ======================================================
+  // 3. UI PREPARATION
+  // ======================================================
+  const crudView = document.getElementById("view-crud");
+  const searchContainer = document.getElementById("search-container");
+
+  if (crudView) {
+    crudView.classList.remove("hidden");
+    crudView.style.visibility = "visible";
+  }
+  if (searchContainer) searchContainer.classList.remove("hidden");
+
+  const titleEl = document.getElementById("cur-title");
+  if (titleEl) titleEl.innerText = id.replace(/_/g, " ").toUpperCase();
+
+  this.syncSidebarUI(id);
+
+  // ======================================================
+  // 4. LOAD DATA & RENDER
+  // ======================================================
+  if (this.resourceCache[id]) {
+    console.log(`[CACHE] Rendering ${id} from memory...`);
+    // Update schema sebelum render
+    this.schema = this.schemaCache[id]?.schema || {};
+    
+    // Langsung render (ini akan mengisi head, body, dan pagination secara utuh)
+    this.renderTable(this.resourceCache[id]);
+    
+    // Background refresh untuk memastikan data tetap up-to-date
+    this.loadResource();
+  } else {
+    console.log(`[FETCH] Loading ${id} from Server...`);
+    if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Mengambil Data...</td></tr>`;
+    
+    // loadResource harus memanggil renderTable di dalamnya setelah data didapat
+    await this.loadResource();
+  }
+},
+
   renderSidebar() {
     const list = document.getElementById("resource-list");
     if (!list) return;
@@ -695,51 +744,7 @@ const app = {
     }
   },
 
-  async loadPermissions() {
-    console.log("[PERMISSION] Loading...");
-    const role = localStorage.getItem("sk_role");
 
-    const res = await this.get({
-      action: "read",
-      table: "config_permissions",
-    });
-
-    this.permissions = {};
-
-    if (!res.success) {
-      console.warn(
-        "[PERMISSION] Forbidden/Error. Menggunakan mode akses terbatas."
-      );
-      if (this.allResources) {
-        this.allResources.forEach((r) => {
-          this.permissions[r.id.toLowerCase().trim()] = {
-            browse: true,
-            add: false,
-            edit: false,
-            delete: false,
-          };
-        });
-      }
-      return true;
-    }
-
-    res.rows.forEach((p) => {
-      if (!p.resource || !p.role) return;
-      if (String(p.role).toLowerCase() !== role.toLowerCase()) return;
-
-      const resource = String(p.resource).toLowerCase().trim();
-      this.permissions[resource] = {
-        browse: String(p.can_browse).toUpperCase() === "TRUE",
-        add: String(p.can_add).toUpperCase() === "TRUE",
-        edit: String(p.can_edit).toUpperCase() === "TRUE",
-        delete: String(p.can_delete).toUpperCase() === "TRUE",
-        policy: String(p.ownership_policy || "ALL").toUpperCase(),
-      };
-    });
-
-    // console.log('[PERMISSION] Final Map:', this.permissions);
-    return true;
-  },
 
   can(resource, action) {
     if (!this.role) return false;
@@ -829,86 +834,94 @@ async shoutToMaster(errorContext = null) {
   return null;
 },
 
-  async init() {
-    if (!this.token) return;
+async init() {
+  if (!this.token) return;
 
-    if (!this.role) this.role = localStorage.getItem("sk_role") || "";
+  if (!this.role) this.role = localStorage.getItem("sk_role") || "";
 
-    document.getElementById("login-screen")?.classList.add("hidden");
-    document.getElementById("u-email").innerText = this.email || "";
-    document.getElementById("u-role").innerText = this.role || "";
+  document.getElementById("login-screen")?.classList.add("hidden");
+  document.getElementById("u-email").innerText = this.email || "";
+  document.getElementById("u-role").innerText = this.role || "";
 
-    const systemTools = document.getElementById("system-tools");
-    if (systemTools) {
-      this.role?.toUpperCase() === "ADMIN"
-        ? systemTools.classList.remove("hidden")
-        : systemTools.classList.add("hidden");
-    }
+  const systemTools = document.getElementById("system-tools");
+  if (systemTools) {
+    this.role?.toUpperCase() === "ADMIN"
+      ? systemTools.classList.remove("hidden")
+      : systemTools.classList.add("hidden");
+  }
 
-    const titleEl = document.getElementById("cur-title");
-    if (titleEl) titleEl.innerText = "SYNC...";
+  const titleEl = document.getElementById("cur-title");
+  if (titleEl) titleEl.innerText = "SYNC...";
 
-    // 1️⃣ LOAD PERMISSION
-    await this.loadPermissions();
-    this.loadDashboardConfig();
+  /* =====================================================
+   * 1️⃣ LOAD PERMISSIONS (WAJIB PALING AWAL)
+   * ===================================================== */
+  await this.loadPermissions();
 
-    // 2️⃣ LIST RESOURCE
-    const resList = await this.get({ action: "listResources" });
-    if (!resList.success) {
-      alert("Koneksi gagal atau Token Expired");
-      auth.logout();
-      return;
-    }
+  /* =====================================================
+   * 2️⃣ LIST RESOURCES
+   * ===================================================== */
+  const resList = await this.get({ action: "listResources" });
+  if (!resList.success) {
+    alert("Koneksi gagal atau Token Expired");
+    auth.logout();
+    return;
+  }
 
-    this.allResources = resList.resources;
-    this.fullAppData = {};
-    this.resourceCache = {};
-    this.schemaCache = {};
+  this.allResources = resList.resources;
+  this.fullAppData = {};
+  this.resourceCache = {};
+  this.schemaCache = {};
 
-    // 3️⃣ LOAD SEMUA TABLE
-    await Promise.all(
-      this.allResources.map(async (res) => {
-        try {
-          const detail = await this.get({ action: "read", table: res.id });
+  /* =====================================================
+   * 3️⃣ LOAD SEMUA DATA TABLE
+   * ===================================================== */
+  await Promise.all(
+    this.allResources.map(async (res) => {
+      try {
+        const detail = await this.get({ action: "read", table: res.id });
 
-          if (detail.success) {
-            this.fullAppData[res.id] = {
-              schema: detail.schema,
-              rows: detail.rows,
-            };
+        if (detail.success) {
+          this.fullAppData[res.id] = {
+            schema: detail.schema,
+            rows: detail.rows,
+          };
 
-            this.resourceCache[res.id] = detail.rows;
+          this.resourceCache[res.id] = detail.rows;
 
-            this.schemaCache[res.id] = {
-              schema: detail.schema,
-              modes: detail.modes || {
-                add: this.can(res.id, "add"),
-                edit: this.can(res.id, "edit"),
-                delete: this.can(res.id, "delete"),
-                browse: { fields: Object.keys(detail.schema) },
-              },
-            };
-          } else {
-            this.schemaCache[res.id] = {
-              schema: {},
-              modes: { add: false, edit: false, delete: false },
-            };
-          }
-        } catch (e) {
-          console.error(`[INIT] Error loading ${res.id}`, e);
+          this.schemaCache[res.id] = {
+            schema: detail.schema,
+            modes: {
+              add: this.can(res.id, "add"),
+              edit: this.can(res.id, "edit"),
+              delete: this.can(res.id, "delete"),
+              browse: { fields: Object.keys(detail.schema) },
+            },
+          };
+        } else {
+          this.schemaCache[res.id] = {
+            schema: {},
+            modes: { add: false, edit: false, delete: false },
+          };
         }
-      })
-    );
+      } catch (e) {
+        console.error(`[INIT] Error loading ${res.id}`, e);
+      }
+    })
+  );
 
-    // ✅ 4️⃣ INI YANG SEBELUMNYA HILANG
-    await this.loadDashboardConfig();
+  this.renderSidebar();
 
-    // 5️⃣ BARU BOLEH BUKA DASHBOARD
-    this.openDashboard();
-    this.renderSidebar();
+  /* =====================================================
+   * 4️⃣ LOAD DASHBOARD CONFIG (SETELAH DATA SIAP)
+   * ===================================================== */
+  await this.loadDashboardConfig();
 
-    if (titleEl) titleEl.innerText = "SYSTEM READY";
-  },
+  
+
+  if (titleEl) titleEl.innerText = "SYSTEM READY";
+},
+
 
   // --- JEMBATAN GET: LOAD DATA ---
   async get(params = {}, retryCount = 0) {
@@ -1207,33 +1220,77 @@ async loadResource(forceRefresh = false) {
   }
 },
 
-async loadDashboardConfig () {
-    const response = await this.callBackend({ action: "getDashboardConfig" });
-    if (response.success) {
-      // Pastikan jika data di database kosong/null, kita kasih default value
-      this.dashboardConfigs = response.data.map(item => ({
-        ...item,
-        vars: typeof item.vars === 'string' ? JSON.parse(item.vars) : (item.vars || []),
-        allowed_role: item.allowed_role || "all" // Fallback jika data lama belum punya role
-      }));
-      this.renderDashboardBuilder();
+
+async loadPermissions() {
+  console.log("[PERMISSION] Loading process started...");
+  const role = localStorage.getItem("sk_role");
+
+  if (!role) {
+    console.error("[PERMISSION] Role tidak ditemukan di localStorage!");
+  }
+
+  const res = await this.get({
+    action: "read",
+    table: "config_permissions",
+  });
+
+  this.permissions = {};
+
+  // ======================================================
+  // HANDLING ERROR / FORBIDDEN
+  // ======================================================
+  if (!res.success) {
+    console.warn(
+      "[PERMISSION] Forbidden/Error. Menggunakan mode akses terbatas (Read-Only)."
+    );
+    if (this.allResources) {
+      this.allResources.forEach((r) => {
+        this.permissions[r.id.toLowerCase().trim()] = {
+          browse: true,
+          add: false,
+          edit: false,
+          delete: false,
+        };
+      });
     }
-  },
+    console.log("[PERMISSION] Fallback Permissions Applied:", this.permissions);
+    return true;
+  }
 
-//  async testShout() {
-//     console.log('🚀 [Test] Memulai pengujian komunikasi ke Master...');
+  // ======================================================
+  // MAPPING PERMISSION BERDASARKAN ROLE
+  // ======================================================
+  res.rows.forEach((p) => {
+    if (!p.resource || !p.role) return;
     
-//     // Karena ini test, kita paksa kirim pesan 'OVERLOAD_TEST' 
-//     // agar lolos filter 'isOverload' di fungsi shoutToMaster
-//     const newEngine = await this.shoutToMaster('manual_overload_test_429');
-    
-//     if (newEngine) {
-//       console.log('✅ [Test Result] BERHASIL: Engine baru diterima ->', newEngine);
-//     } else {
-//       console.error('❌ [Test Result] GAGAL: Master menolak atau tidak ada engine tersedia.');
-//     }
-//   }
+    // Filter berdasarkan role user yang sedang login
+    if (String(p.role).toLowerCase() !== role.toLowerCase()) return;
 
+    const resource = String(p.resource).toLowerCase().trim();
+    this.permissions[resource] = {
+      browse: String(p.can_browse).toUpperCase() === "TRUE",
+      add: String(p.can_add).toUpperCase() === "TRUE",
+      edit: String(p.can_edit).toUpperCase() === "TRUE",
+      delete: String(p.can_delete).toUpperCase() === "TRUE",
+      policy: String(p.ownership_policy || "ALL").toUpperCase(),
+    };
+  });
+
+  // ======================================================
+  // LOGGING DATA PERMISSION (Debug Mode)
+  // ======================================================
+  console.group(`[PERMISSION SYSTEM] - Role: ${role.toUpperCase()}`);
+  if (Object.keys(this.permissions).length === 0) {
+    console.warn("⚠️ Tidak ada permission yang cocok untuk role ini di database.");
+  } else {
+    console.log("Data Hak Akses Berhasil Diambil:");
+    // console.table akan menampilkan data dalam bentuk tabel yang rapi di console browser
+    console.table(this.permissions);
+  }
+  console.groupEnd();
+
+  return true;
+},
 
 };
 app.init();

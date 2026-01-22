@@ -461,13 +461,21 @@ renderTable(rows = []) {
   const viewMode = document.getElementById("view-mode")?.value || "active";
 
   // ======================================================
-  // PERMISSIONS
+  // 🛡️ SECURITY GUARD: CEK PERMISSIONS (CRITICAL)
   // ======================================================
-  const m = this.modes || {};
+  // Jika this.modes belum didefinisikan oleh selectResource, jangan tampilkan apapun.
+  if (!this.modes || Object.keys(this.modes).length === 0) {
+    console.error("[SECURITY] renderTable ditolak: Izin (modes) belum siap.");
+    if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center text-red-500 font-bold">Memvalidasi izin akses...</td></tr>`;
+    return;
+  }
+
+  const m = this.modes;
   const canAdd = m.can_add === true;
   const canEdit = m.can_edit === true;
   const canDelete = m.can_delete === true;
 
+  // Kontrol Tombol Tambah (Global)
   if (btnAdd) {
     viewMode === "active" && canAdd
       ? btnAdd.classList.replace("hidden", "flex")
@@ -491,7 +499,7 @@ renderTable(rows = []) {
   );
 
   // ======================================================
-  // SORT
+  // SORT LOGIC
   // ======================================================
   const sortedRows = [...rows].sort((a, b) => {
     const tsA = new Date(a.created_at || 0).getTime() || 0;
@@ -502,7 +510,7 @@ renderTable(rows = []) {
   this.currentDataView = sortedRows;
 
   // ======================================================
-  // PAGINATION
+  // PAGINATION CALCULATIONS
   // ======================================================
   this.pagination.totalRows = sortedRows.length;
   this.pagination.totalPages = Math.ceil(
@@ -513,16 +521,11 @@ renderTable(rows = []) {
     this.pagination.currentPage = Math.max(1, this.pagination.totalPages);
   }
 
-  const startIdx =
-    (this.pagination.currentPage - 1) * this.pagination.perPage;
-
-  const pageRows = sortedRows.slice(
-    startIdx,
-    startIdx + this.pagination.perPage
-  );
+  const startIdx = (this.pagination.currentPage - 1) * this.pagination.perPage;
+  const pageRows = sortedRows.slice(startIdx, startIdx + this.pagination.perPage);
 
   // ======================================================
-  // EMPTY STATE (✔️ BENAR, SETELAH pageRows ADA)
+  // EMPTY STATE HANDLING
   // ======================================================
   if (pageRows.length === 0) {
     if (body) body.innerHTML = "";
@@ -554,17 +557,13 @@ renderTable(rows = []) {
   }
 
   // ======================================================
-  // RENDER BODY
+  // RENDER BODY (DENGAN KONTROL EDIT/DELETE)
   // ======================================================
   if (body) {
     body.innerHTML = pageRows.map(row => {
       const isLocked = this.processingRows?.has(String(row.id));
-      const lockStyle = isLocked
-        ? 'style="opacity:0.4;pointer-events:none;"'
-        : '';
-      const spinner = isLocked
-        ? '<i class="fa-solid fa-spinner fa-spin mr-2"></i>'
-        : '';
+      const lockStyle = isLocked ? 'style="opacity:0.4;pointer-events:none;"' : '';
+      const spinner = isLocked ? '<i class="fa-solid fa-spinner fa-spin mr-2"></i>' : '';
 
       return `
         <tr id="row-${row.id}" ${lockStyle}
@@ -585,13 +584,13 @@ renderTable(rows = []) {
           <td class="p-6 text-right space-x-2 whitespace-nowrap">
             ${canEdit
               ? `<button data-id="${row.id}" onclick="app.handleEdit(this)"
-                   class="inline-flex items-center justify-center p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl shadow-sm">
+                   class="inline-flex items-center justify-center p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl shadow-sm transition-all">
                    <i class="fa-solid fa-pen-to-square"></i>
                  </button>`
               : ""}
             ${viewMode === "active" && canDelete
               ? `<button onclick="app.remove('${this.currentTable}','${row.id}')"
-                   class="inline-flex items-center justify-center p-2.5 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl shadow-sm">
+                   class="inline-flex items-center justify-center p-2.5 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all">
                    <i class="fa-solid fa-trash-can"></i>
                  </button>`
               : ""}

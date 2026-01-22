@@ -14,68 +14,200 @@ Object.assign(app, {
   /**
    * 1. SAVE TO LOCAL STORAGE & SYNC
    */
+/**
+ * ============================================================
+ * DASHBOARD LOCAL STORAGE PERSISTENCE
+ * ============================================================
+ */
+
+/**
+ * 1️⃣ SAVE DASHBOARD CONFIG
+ */
 async saveDashboardConfig() {
-    const btn = document.getElementById("btn-save-dashboard"); // Pastikan ID tombol sesuai di HTML
-    
-    // 1. Persiapan Payload (Seluruh Konfigurasi Dashboard)
-    // Sesuai prinsip Juragan: Lengkap & Terstruktur
-    const payload = this.dashboardConfigs.map(conf => ({
-      name: conf.name || "Untitled Widget",
-      table: conf.table || "",
-      type: conf.type || "COUNT",
-      column: conf.column || "",
-      // VARS harus di-string-kan agar tidak merusak struktur kolom Spreadsheet
-      vars: JSON.stringify(conf.vars || []), 
-      formula: conf.formula || "",
-      color: conf.color || "slate",
-      unit: conf.unit || "Rp",
-      icon: conf.icon || "fa-wallet",
-      allowed_role: conf.allowed_role || "all" // Field baru yang kita tambahkan
-    }));
+  const btn = document.getElementById("btn-commit"); // ⬅️ SAMA
+  if (!btn) {
+    alert("❌ Tombol commit tidak ditemukan di DOM");
+    return;
+  }
 
-    // 2. UI Feedback - Sultan UI Mode
-    const originalText = btn ? btn.innerText : "SAVE DASHBOARD";
-    if (btn) {
-      btn.disabled = true;
-      btn.innerText = "☁️ SYNCING TO CLOUD...";
-      btn.classList.add("opacity-50", "cursor-not-allowed");
+  if (!this.dashboardConfigs || this.dashboardConfigs.length === 0) {
+    alert("⚠️ Dashboard masih kosong, Juragan!");
+    return;
+  }
+
+  const payload = {
+    id: this.editingDashboardId || "SK-" + Date.now(),
+    created_by: this.currentUser?.email || "SYSTEM",
+    config_json: JSON.stringify(this.dashboardConfigs),
+    updated_at: new Date().toISOString()
+  };
+
+  const originalText = btn.innerText;
+  btn.disabled = true;
+  btn.innerText = "DEPLOYING...";
+  btn.classList.add("opacity-50", "cursor-not-allowed");
+
+  try {
+    const res = await this.post({
+      action: this.editingDashboardId ? "update" : "create",
+      table: "config_dashboard",
+      data: payload
+    });
+
+    if (!res.success) {
+      throw new Error(res.message || "Unknown Error");
     }
 
-    try {
-      // 3. Kirim ke Backend menggunakan this.post (Pola Konsisten)
-      // Kita kirim action 'save_dashboard' untuk dihandle di Code.gs
-      const res = await this.post({
-        action: "save_dashboard", 
-        table: "config_dashboard",
-        data: payload
-      });
+    // 🔐 BACKUP LOCAL (HYBRID)
+    localStorage.setItem("sk_dashboard_backup", payload.config_json);
 
-      if (res.success) {
-        if (btn) btn.innerText = "✅ SYNCED!";
-        
-        // Beri jeda visual sebelum mengembalikan tombol
-        setTimeout(() => {
-          if (btn) {
-            btn.disabled = false;
-            btn.innerText = originalText;
-            btn.classList.remove("opacity-50", "cursor-not-allowed");
-          }
-        }, 1500);
-        
-        console.log("Dashboard Policy Deployed:", payload);
+    btn.innerText = "🚀 DEPLOYED!";
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerText = originalText;
+      btn.classList.remove("opacity-50", "cursor-not-allowed");
+    }, 800);
+
+  } catch (err) {
+    alert("❌ Deployment Failed: " + err.message);
+    btn.disabled = false;
+    btn.innerText = originalText;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
+  }
+},
+
+
+/**
+ * 2️⃣ LOAD DASHBOARD CONFIG (ROLE AWARE + FORENSIC LOG)
+ */
+/**
+ * =====================================================
+ * 📊 LOAD DASHBOARD CONFIG (HYBRID + ROLE AWARE)
+ * Source of Truth : BACKEND
+ * Cache           : LocalStorage
+ * =====================================================
+ */
+async loadDashboardConfig() {
+  let finalConfig = [];
+  const role = localStorage.getItem("sk_role") || "guest";
+
+  console.group("📊 [DASHBOARD] LOAD CONFIG");
+  console.log("👤 Active Role:", role);
+
+  /* =====================================================
+   * 1️⃣ LOAD DARI LOCAL STORAGE (FAST FALLBACK)
+   * ===================================================== */
+  try {
+    const localRaw = localStorage.getItem("sk_dashboard_backup");
+    if (localRaw) {
+      const parsed = JSON.parse(localRaw);
+      if (Array.isArray(parsed)) {
+        finalConfig = parsed;
+        console.log("💾 [LOCAL] Loaded:", parsed.length, "widgets");
       } else {
-        throw new Error(res.message || "Cloud Sync Failed");
+        console.warn("⚠️ [LOCAL] Invalid format, ignored:", parsed);
       }
-
-    } catch (err) {
-      alert("❌ Dashboard Save Failed: " + err.message);
-      if (btn) {
-        btn.disabled = false;
-        btn.innerText = originalText;
-        btn.classList.remove("opacity-50", "cursor-not-allowed");
-      }
+    } else {
+      console.log("ℹ️ [LOCAL] No local backup found");
     }
-  },
+  } catch (err) {
+    console.warn("🔥 [LOCAL] Corrupted LocalStorage, cleared", err);
+    localStorage.removeItem("sk_dashboard_backup");
+  }
+
+  /* =====================================================
+   * 2️⃣ LOAD DARI BACKEND (AUTHORITATIVE)
+   * ===================================================== */
+  try {
+    console.log("☁️ [DB] Requesting load_dashboard...");
+
+    const res = await this.post({
+      action: "load_dashboard"
+    });
+
+    if (res?.success && Array.isArray(res.data)) {
+      finalConfig = res.data;
+
+      // 🔁 Sync ke LocalStorage
+      localStorage.setItem(
+        "sk_dashboard_backup",
+        JSON.stringify(res.data)
+      );
+
+      console.log(
+        "☁️ [DB] Loaded:",
+        res.data.length,
+        "widgets & synced to LocalStorage"
+      );
+    } else {
+      console.warn("⚠️ [DB] Invalid response, fallback to local:", res);
+    }
+  } catch (err) {
+    console.error(
+      "🔥 [DB] load_dashboard failed, fallback to local",
+      err
+    );
+  }
+
+  /* =====================================================
+   * 3️⃣ FINAL GUARD
+   * ===================================================== */
+  if (!Array.isArray(finalConfig)) {
+    console.warn("⚠️ [FINAL] Config invalid, reset");
+    finalConfig = [];
+  }
+
+  /* =====================================================
+   * 4️⃣ ROLE FILTERING (UX FILTER – BE SUDAH FILTER)
+   * ===================================================== */
+  console.group("🔐 [ROLE FILTER]");
+  const beforeCount = finalConfig.length;
+
+  finalConfig = finalConfig.filter((conf, idx) => {
+    const ar = conf.allowed_role;
+    let allowed = false;
+
+    if (!ar || ar === "all") {
+      allowed = true;
+    } else if (ar === role) {
+      allowed = true;
+    }
+
+    console.log(
+      `#${idx + 1}`,
+      conf.name || "(unnamed)",
+      "| allowed_role =", ar,
+      "| role =", role,
+      "=>",
+      allowed ? "✅ SHOWN" : "❌ HIDDEN"
+    );
+
+    return allowed;
+  });
+
+  console.log(
+    `📉 Filtered: ${beforeCount} → ${finalConfig.length}`
+  );
+  console.groupEnd();
+
+  /* =====================================================
+   * 5️⃣ STATE INJECTION
+   * ===================================================== */
+  this.dashboardConfig  = [...finalConfig];
+  this.dashboardConfigs = [...finalConfig];
+
+  console.log(
+    "✅ [DASHBOARD] Final widgets injected:",
+    finalConfig.length
+  );
+  console.groupEnd();
+
+   this.openDashboard();
+
+  return finalConfig;
+}
+,
+
 
   /**
    * 2. LOAD CONFIG (Mencegah Data Hilang saat Refresh)
@@ -85,157 +217,245 @@ async saveDashboardConfig() {
   /**
    * 3. RENDER DASHBOARD (Dengan Sinkronisasi Data Riil)
    */
-  renderDashboard: function () {
-    const container = document.getElementById("dashboard-container");
-    if (!container) return;
+renderDashboard: function () {
+  const container = document.getElementById("dashboard-container");
+  if (!container) return;
 
-    const colorMap = {
-      slate: {
-        bg: "bg-slate-900",
-        glow: "shadow-slate-500/20",
-        grad: "from-slate-800 to-slate-950",
-        txt: "text-slate-100",
-        icon: "bg-slate-700 text-slate-300",
-      },
-      blue: {
-        bg: "bg-blue-600",
-        glow: "shadow-blue-500/40",
-        grad: "from-blue-500 to-blue-700",
-        txt: "text-white",
-        icon: "bg-blue-400/30 text-blue-100",
-      },
-      emerald: {
-        bg: "bg-emerald-600",
-        glow: "shadow-emerald-500/40",
-        grad: "from-emerald-500 to-emerald-700",
-        txt: "text-white",
-        icon: "bg-emerald-400/30 text-emerald-100",
-      },
-      rose: {
-        bg: "bg-rose-600",
-        glow: "shadow-rose-500/40",
-        grad: "from-rose-500 to-rose-700",
-        txt: "text-white",
-        icon: "bg-rose-400/30 text-rose-100",
-      },
-      amber: {
-        bg: "bg-amber-500",
-        glow: "shadow-amber-500/40",
-        grad: "from-amber-400 to-amber-600",
-        txt: "text-white",
-        icon: "bg-amber-300/30 text-amber-100",
-      },
-      violet: {
-        bg: "bg-violet-600",
-        glow: "shadow-violet-500/40",
-        grad: "from-violet-500 to-violet-700",
-        txt: "text-white",
-        icon: "bg-violet-400/30 text-violet-100",
-      },
-      cyan: {
-        bg: "bg-cyan-500",
-        glow: "shadow-cyan-500/40",
-        grad: "from-cyan-400 to-cyan-600",
-        txt: "text-white",
-        icon: "bg-cyan-300/30 text-cyan-100",
-      },
-      fuchsia: {
-        bg: "bg-fuchsia-600",
-        glow: "shadow-fuchsia-500/40",
-        grad: "from-fuchsia-500 to-fuchsia-700",
-        txt: "text-white",
-        icon: "bg-fuchsia-400/30 text-fuchsia-100",
-      },
-    };
+  /* =====================================================
+   * 1️⃣ RESOLVE USER ROLE (LS → MEMORY → FALLBACK)
+   * ===================================================== */
+  const userRole =
+    (this.currentUser && this.currentUser.role) ||
+    localStorage.getItem("sk_role") ||
+    "guest";
 
-    const configs = this.dashboardConfig || [];
+  console.group("📊 [DASHBOARD] RENDER");
+  console.log("👤 User Role:", userRole);
+  console.log("🔐 Permissions:", this.permissions);
 
-    if (configs.length === 0) {
-      container.innerHTML = `
-      <div class="col-span-full p-20 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
-        <i class="fa-solid fa-shapes text-4xl text-slate-200 mb-4"></i>
-        <p class="text-slate-400 font-black uppercase tracking-widest text-[10px]">Belum ada widget dirakit, juragan.</p>
-      </div>`;
+  const colorMap = {
+    slate: {
+      bg: "bg-slate-900",
+      glow: "shadow-slate-500/20",
+      grad: "from-slate-800 to-slate-950",
+      txt: "text-slate-100",
+      icon: "bg-slate-700 text-slate-300",
+    },
+    blue: {
+      bg: "bg-blue-600",
+      glow: "shadow-blue-500/40",
+      grad: "from-blue-500 to-blue-700",
+      txt: "text-white",
+      icon: "bg-blue-400/30 text-blue-100",
+    },
+    emerald: {
+      bg: "bg-emerald-600",
+      glow: "shadow-emerald-500/40",
+      grad: "from-emerald-500 to-emerald-700",
+      txt: "text-white",
+      icon: "bg-emerald-400/30 text-emerald-100",
+    },
+    rose: {
+      bg: "bg-rose-600",
+      glow: "shadow-rose-500/40",
+      grad: "from-rose-500 to-rose-700",
+      txt: "text-white",
+      icon: "bg-rose-400/30 text-rose-100",
+    },
+    amber: {
+      bg: "bg-amber-500",
+      glow: "shadow-amber-500/40",
+      grad: "from-amber-400 to-amber-600",
+      txt: "text-white",
+      icon: "bg-amber-300/30 text-amber-100",
+    },
+    violet: {
+      bg: "bg-violet-600",
+      glow: "shadow-violet-500/40",
+      grad: "from-violet-500 to-violet-700",
+      txt: "text-white",
+      icon: "bg-violet-400/30 text-violet-100",
+    },
+    cyan: {
+      bg: "bg-cyan-500",
+      glow: "shadow-cyan-500/40",
+      grad: "from-cyan-400 to-cyan-600",
+      txt: "text-white",
+      icon: "bg-cyan-300/30 text-cyan-100",
+    },
+    fuchsia: {
+      bg: "bg-fuchsia-600",
+      glow: "shadow-fuchsia-500/40",
+      grad: "from-fuchsia-500 to-fuchsia-700",
+      txt: "text-white",
+      icon: "bg-fuchsia-400/30 text-fuchsia-100",
+    },
+  };
+
+  /* =====================================================
+   * 2️⃣ FILTER DASHBOARD (ROLE + TABLE PERMISSION)
+   * ===================================================== */
+  const configs = (this.dashboardConfig || []).filter((conf, idx) => {
+    /* ---------- ROLE CHECK ---------- */
+    if (conf.allowed_role && conf.allowed_role !== "all") {
+      const allowedRoles = String(conf.allowed_role)
+        .split(",")
+        .map(r => r.trim().toLowerCase());
+
+      if (!allowedRoles.includes(userRole.toLowerCase())) {
+        console.warn(
+          `⛔ [${idx + 1}] HIDDEN (ROLE)`,
+          conf.name,
+          "| allowed:",
+          conf.allowed_role,
+          "| user:",
+          userRole
+        );
+        return false;
+      }
+    }
+
+    /* ---------- PERMISSION CHECK ---------- */
+    const perm = this.permissions?.[conf.table];
+
+    if (!perm || perm.browse !== true) {
+      console.warn(
+        `⛔ [${idx + 1}] HIDDEN (PERMISSION)`,
+        conf.name,
+        "| table:",
+        conf.table,
+        "| perm:",
+        perm
+      );
+      return false;
+    }
+
+    console.log(
+      `✅ [${idx + 1}] SHOWN`,
+      conf.name,
+      "| table:",
+      conf.table
+    );
+    return true;
+  });
+
+  /* =====================================================
+   * 3️⃣ EMPTY STATE + ONE-TIME RETRY
+   * ===================================================== */
+  if (configs.length === 0) {
+
+    // 🔁 Retry 1x setelah 2 detik (khusus race condition)
+    if (!this._dashboardRetryOnce) {
+      this._dashboardRetryOnce = true;
+
+      console.warn(
+        "⏳ [DASHBOARD] Tidak ada widget lolos filter. Retry 1x dari LocalStorage dalam 2 detik..."
+      );
+
+      setTimeout(() => {
+        try {
+          const cached = localStorage.getItem("sk_dashboard_backup");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log(
+                "♻️ [DASHBOARD] Reloaded dashboard config from LocalStorage:",
+                parsed.length
+              );
+              this.dashboardConfig = parsed;
+              this.renderDashboard();
+              return;
+            }
+          }
+          console.warn("⚠️ [DASHBOARD] LocalStorage kosong / invalid saat retry.");
+        } catch (err) {
+          console.error("❌ [DASHBOARD] Gagal parse LocalStorage:", err);
+        }
+      }, 2000);
+
+      console.groupEnd();
       return;
     }
 
-    container.innerHTML = configs
-      .map((conf) => {
-        const theme = colorMap[conf.color] || colorMap.slate;
+    // 🧱 Final empty state (tidak retry lagi)
+    container.innerHTML = `
+      <div class="col-span-full p-20 text-center bg-slate-50 rounded-[3rem]
+        border-2 border-dashed border-slate-200">
+        <i class="fa-solid fa-shapes text-4xl text-slate-200 mb-4"></i>
+        <p class="text-slate-400 font-black uppercase tracking-widest text-[10px]">
+          Tidak ada widget yang diizinkan untuk role ini.
+        </p>
+      </div>`;
+    console.groupEnd();
+    return;
+  }
 
-        // --- LOGIKA HITUNG DATA RIIL ---
-        const tableData = this.resourceCache[conf.table] || [];
-        let calculatedValue = 0;
+  /* =====================================================
+   * 4️⃣ RENDER WIDGET
+   * ===================================================== */
+  container.innerHTML = configs
+    .map((conf) => {
+      const theme = colorMap[conf.color] || colorMap.slate;
+      const tableData = this.resourceCache[conf.table] || [];
 
-        if (conf.type === "SUM") {
-          calculatedValue = tableData.reduce(
-            (acc, row) => acc + (parseFloat(row[conf.column]) || 0),
-            0
-          );
-        } else if (conf.type === "COUNT") {
-          calculatedValue = tableData.length;
-        } else if (conf.type === "AVG" && tableData.length > 0) {
-          const sum = tableData.reduce(
-            (acc, row) => acc + (parseFloat(row[conf.column]) || 0),
-            0
-          );
-          calculatedValue = sum / tableData.length;
-        }
+      let calculatedValue = 0;
 
-        const displayValue = calculatedValue.toLocaleString("id-ID");
+      if (conf.type === "SUM") {
+        calculatedValue = tableData.reduce(
+          (acc, row) => acc + (parseFloat(row[conf.column]) || 0),
+          0
+        );
+      } else if (conf.type === "COUNT") {
+        calculatedValue = tableData.length;
+      } else if (conf.type === "AVG" && tableData.length > 0) {
+        const sum = tableData.reduce(
+          (acc, row) => acc + (parseFloat(row[conf.column]) || 0),
+          0
+        );
+        calculatedValue = sum / tableData.length;
+      }
 
-        return `
+      const displayValue = calculatedValue.toLocaleString("id-ID");
+
+      return `
       <div class="relative group animate-fade-in">
-        <div class="absolute inset-0 ${
-          theme.bg
-        } rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40 transition-all duration-700"></div>
-        <div class="relative bg-gradient-to-br ${
-          theme.grad
-        } p-7 rounded-[2.5rem] ${
-          theme.glow
-        } shadow-2xl border border-white/10 overflow-hidden min-h-[220px] flex flex-col justify-between">
-          <div class="absolute top-0 right-0 -mr-4 -mt-4 w-32 h-32 bg-white/10 rounded-full blur-3xl"></div>
-          <div class="absolute bottom-0 left-0 -ml-4 -mb-4 w-24 h-24 bg-black/10 rounded-full blur-2xl"></div>
-          <div class="flex justify-between items-start relative z-10">
-            <div class="${
-              theme.icon
-            } w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10 group-hover:scale-110 transition-transform duration-500">
-              <i class="fa-solid ${conf.icon || "fa-wallet"} text-xl"></i>
+        <div class="absolute inset-0 ${theme.bg}
+          rounded-[2.5rem] blur-xl opacity-20 group-hover:opacity-40
+          transition-all duration-700"></div>
+
+        <div class="relative bg-gradient-to-br ${theme.grad}
+          p-7 rounded-[2.5rem] ${theme.glow}
+          shadow-2xl border border-white/10 overflow-hidden
+          min-h-[220px] flex flex-col justify-between">
+
+          <div class="flex justify-between items-start">
+            <div class="${theme.icon}
+              w-12 h-12 rounded-2xl flex items-center justify-center">
+              <i class="fa-solid ${conf.icon || "fa-wallet"}"></i>
             </div>
-            <div class="bg-black/10 px-3 py-1 rounded-full backdrop-blur-sm border border-white/5">
-               <span class="text-[9px] font-black tracking-widest ${
-                 theme.txt
-               } opacity-80 uppercase">${conf.unit || "DATA"}</span>
-            </div>
+            <span class="text-[9px] ${theme.txt} opacity-60 uppercase">
+              ${conf.unit || "DATA"}
+            </span>
           </div>
-          <div class="mt-6 relative z-10">
-            <h3 class="text-[10px] font-black tracking-[0.2em] mb-1 ${
-              theme.txt
-            } opacity-60 uppercase">${conf.name || "Untitled Widget"}</h3>
-            <div class="flex items-baseline gap-1">
-              <span class="text-4xl font-black tracking-tighter ${
-                theme.txt
-              } drop-shadow-md">${displayValue}</span>
-            </div>
-          </div>
-          <div class="mt-4 flex items-center justify-between relative z-10">
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full bg-white/40 animate-pulse"></div>
-              <span class="text-[8px] font-bold ${
-                theme.txt
-              } opacity-40 uppercase tracking-[0.15em]">${
-          conf.type
-        } ANALYSIS</span>
-            </div>
-            <i class="fa-solid fa-arrow-up-right-dots text-[10px] ${
-              theme.txt
-            } opacity-20 group-hover:opacity-100 transition-opacity"></i>
+
+          <div>
+            <h3 class="text-[10px] ${theme.txt} opacity-60 uppercase">
+              ${conf.name || "Untitled"}
+            </h3>
+            <span class="text-4xl font-black ${theme.txt}">
+              ${displayValue}
+            </span>
           </div>
         </div>
       </div>`;
-      })
-      .join("");
-  },
+    })
+    .join("");
+
+  console.log("✅ [DASHBOARD] Rendered widgets:", configs.length);
+  console.groupEnd();
+},
+
 
   /**
    * 2. SYNC TO CLOUD (Engine GAS)
@@ -612,43 +832,7 @@ renderDashboardBuilder: function () {
     }
   },
 
-  async loadDashboardConfig() {
-    try {
-      console.log("🔄 [DASHBOARD] Init config...");
 
-      let finalConfig = [];
-
-      // 1️⃣ PRIORITAS: Local Storage (agar refresh aman)
-      const localRaw = localStorage.getItem("sk_dashboard_backup");
-      if (localRaw) {
-        finalConfig = JSON.parse(localRaw);
-        console.log("💾 [DASHBOARD] Loaded from LocalStorage");
-      }
-
-      // 2️⃣ SINKRON: Cloud Cache (kalau ada & lebih valid)
-      const cloudRows = this.resourceCache?.config_dashboard || [];
-      for (let i = cloudRows.length - 1; i >= 0; i--) {
-        const val = cloudRows[i].config_json;
-        if (typeof val === "string" && val.trim().startsWith("[")) {
-          finalConfig = JSON.parse(val);
-          localStorage.setItem("sk_dashboard_backup", val); // sync balik ke LS
-          console.log("📡 [DASHBOARD] Synced from Cloud");
-          break;
-        }
-      }
-
-      // 3️⃣ INJECT KE STATE
-      this.dashboardConfig = [...finalConfig];
-      this.dashboardConfigs = [...finalConfig];
-
-      console.log(`📊 [DASHBOARD] ${finalConfig.length} widget loaded`);
-
-      return finalConfig;
-    } catch (e) {
-      console.error("🔥 [DASHBOARD] Load gagal:", e);
-      return [];
-    }
-  },
 
   updateWidgetConfig: function (index, key, val) {
     // Simpan perubahan ke state
