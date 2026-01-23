@@ -632,8 +632,9 @@ async openForm(data = null) {
     }
 
     // Shield: Hidden input agar data readonly tetap terikut saat serialisasi form
+    // 🔥 PERBAIKAN: Tambahkan ID khusus agar bisa di-update nilai-nya oleh runLiveFormula
     if (isLocked) {
-      html += `<input type="hidden" name="${f}" value="${this.escapeHTML(String(val))}">`;
+      html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${this.escapeHTML(String(val))}">`;
     }
     html += `</div>`;
   }
@@ -650,26 +651,20 @@ async openForm(data = null) {
 
   this.runLiveFormula();
 
-  // 5. ⌨️ KEYBOARD GOVERNANCE (Anti-Double Commit)
+  // 5. ⌨️ KEYBOARD GOVERNANCE
   if (this._formKeyHandler) {
     document.removeEventListener("keydown", this._formKeyHandler);
   }
 
   this._formKeyHandler = (e) => {
-    // Escape = Close
-    if (e.key === "Escape") {
-      this.closeForm();
-    }
-    // Enter = Commit (Hanya jika bukan di textarea)
+    if (e.key === "Escape") this.closeForm();
     if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
-      // Jika Ctrl+Enter atau Cmd+Enter, paksa submit walaupun di textarea
       if (e.ctrlKey || e.metaKey || e.target.tagName !== "TEXTAREA") {
         e.preventDefault();
         document.getElementById("btn-commit")?.click();
       }
     }
   };
-
   document.addEventListener("keydown", this._formKeyHandler);
 },
 
@@ -686,17 +681,15 @@ async save() {
   if (!form) return;
 
   // ======================================================
-  // 1. FAIL-FAST VALIDATION (UX FIRST)
+  // 1. FAIL-FAST VALIDATION
   // ======================================================
   const requiredInputs = form.querySelectorAll("[required]");
   const invalidFields = [];
   
   requiredInputs.forEach(input => {
     const isEmpty = !input.value || !input.value.trim();
-    // Visual Feedback
     input.classList.toggle("border-red-500", isEmpty);
     input.classList.toggle("bg-red-50", isEmpty);
-    
     if (isEmpty) {
       const label = this.schema?.[input.name]?.label || input.name;
       invalidFields.push(label.toUpperCase());
@@ -709,24 +702,34 @@ async save() {
   }
 
   // ======================================================
-  // 2. DATA COLLECTION & PREPARATION
+  // 2. DATA COLLECTION (FIXED FOR AUTOFILL/FORMULA)
   // ======================================================
-  const inputs = form.querySelectorAll("input, select, textarea");
   const data = {};
-  inputs.forEach(el => { if (el.name) data[el.name] = el.value; });
+  const inputs = form.querySelectorAll("input, select, textarea");
+  
+  inputs.forEach(el => { 
+    if (el.name) {
+      // 🔥 LOGIKA PENTING: Jika field disabled, ambil nilai dari hidden input pasangannya
+      if (el.disabled) {
+        const hiddenEl = document.getElementById(`f-${el.name}-hidden`);
+        data[el.name] = hiddenEl ? hiddenEl.value : el.value;
+      } else {
+        data[el.name] = el.value; 
+      }
+    }
+  });
 
   const action = this.editingId ? "update" : "create";
   const optimisticId = action === "create" ? `tmp-${Date.now()}` : this.editingId;
-  let realServerId = null; // 🔥 Patch #2: Explicit ID tracking
+  let realServerId = null;
 
-  // Snapshot original data untuk keperluan rollback
+  // Snapshot original data untuk rollback
   const originalRow = this.resourceCache[this.currentTable]?.find(
     r => String(r.id) === String(this.editingId)
   );
   const originalData = originalRow ? { ...originalRow } : null;
 
   try {
-    // LOCK UI
     this.isSubmitting = true;
     if (btnSave) {
       btnSave.disabled = true;
@@ -734,39 +737,39 @@ async save() {
     }
 
     // ======================================================
-    // 3. ⚡ OPTIMISTIC UI + CACHE INVALIDATION
+    // 3. ⚡ OPTIMISTIC UI (WORKS OFFLINE)
     // ======================================================
     if (!this.resourceCache[this.currentTable]) {
       this.resourceCache[this.currentTable] = [];
     }
 
+    const optimisticData = {
+      ...data,
+      id: optimisticId,
+      created_at: originalData ? originalData.created_at : new Date().toISOString()
+    };
+
     if (action === "create") {
-      this.pagination.currentPage = 1; // Reset view ke hal 1 untuk data baru
-      this.resourceCache[this.currentTable].unshift({
-        id: optimisticId,
-        ...data,
-        created_at: new Date().toISOString()
-      });
+      this.pagination.currentPage = 1;
+      this.resourceCache[this.currentTable].unshift(optimisticData);
     } else {
       const idx = this.resourceCache[this.currentTable].findIndex(
         r => String(r.id) === String(this.editingId)
       );
       if (idx !== -1) {
-        this.resourceCache[this.currentTable][idx] = { 
-          ...this.resourceCache[this.currentTable][idx], 
-          ...data 
-        };
+        this.resourceCache[this.currentTable][idx] = { ...this.resourceCache[this.currentTable][idx], ...data };
       }
     }
 
-    // 🔥 ATOMIC STATE UPDATE
-    this.notifyDataChange(); // Invalidate Search & Sort Cache
+    this.notifyDataChange();
     this.renderTable(this.resourceCache[this.currentTable]);
-    this.lockRow(optimisticId);
+    
+    // Kunci baris agar tidak bisa di-edit saat proses sync
+    setTimeout(() => this.lockRow(optimisticId), 50);
     this.closeForm();
 
     // ======================================================
-    // 4. NETWORK CALL (STRICT BE CONTRACT)
+    // 4. NETWORK CALL
     // ======================================================
     const payload = {
       action,
@@ -777,6 +780,11 @@ async save() {
       data: action === "update" ? { ...data, id: this.editingId } : data
     };
 
+    // Cek koneksi untuk handling offline secara eksplisit
+    if (!navigator.onLine) {
+       throw new Error("OFFLINE_MODE"); // Akan lari ke catch dan tetap stay di UI (Locked)
+    }
+
     const response = await fetch(DYNAMIC_ENGINE_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -784,53 +792,47 @@ async save() {
     });
 
     const result = JSON.parse(await response.text());
-
     if (!result?.success) throw new Error(result?.message || "SERVER_ERROR");
 
     // ======================================================
-    // 5. 🔄 SYNC SUCCESS (ID RE-SYNC)
+    // 5. 🔄 SYNC SUCCESS
     // ======================================================
     if (action === "create" && result.id) {
       const row = this.resourceCache[this.currentTable].find(r => r.id === optimisticId);
       if (row) {
         row.id = result.id;
-        realServerId = result.id; // 🔥 Simpan ID permanen
-        this.lockRow(realServerId); // 🔥 Pindahkan lock ke ID baru
+        realServerId = result.id;
       }
     }
-
     this.notify("✅ Data tersimpan!", "success");
 
   } catch (err) {
     // ======================================================
-    // 6. 🔄 ROLLBACK (FAIL-CLOSED)
+    // 6. 🔄 ROLLBACK / OFFLINE HANDLING
     // ======================================================
     console.error("🔥 SAVE_ERROR:", err);
 
-    if (action === "create") {
-      this.resourceCache[this.currentTable] = this.resourceCache[this.currentTable]
-        .filter(r => r.id !== optimisticId);
-    } else if (originalData) {
-      const idx = this.resourceCache[this.currentTable].findIndex(
-        r => String(r.id) === String(this.editingId)
-      );
-      if (idx !== -1) {
-        this.resourceCache[this.currentTable][idx] = originalData;
+    if (err.message === "OFFLINE_MODE") {
+       this.notify("⚠️ Offline. Data disimpan lokal & dikunci.", "warning");
+       // Di sini Anda bisa menambahkan antrean ke IndexedDB untuk sync nanti
+    } else {
+      // Jika error server asli, lakukan rollback
+      if (action === "create") {
+        this.resourceCache[this.currentTable] = this.resourceCache[this.currentTable].filter(r => r.id !== optimisticId);
+      } else if (originalData) {
+        const idx = this.resourceCache[this.currentTable].findIndex(r => String(r.id) === String(this.editingId));
+        if (idx !== -1) this.resourceCache[this.currentTable][idx] = originalData;
       }
+      this.notify("❌ Gagal: " + err.message, "error");
     }
-
-    this.notify("❌ Gagal: " + err.message, "error");
 
   } finally {
     // ======================================================
-    // 7. FINAL CLEANUP & ATOMIC RENDER
+    // 7. FINAL CLEANUP
     // ======================================================
-    
-    // Unlock target secara spesifik (ID Sementara & ID Baru)
     this.unlockRow(optimisticId);
     if (realServerId) this.unlockRow(realServerId);
 
-    // Final Sync: Pastikan tabel menampilkan versi data paling mutakhir
     this.notifyDataChange();
     this.renderTable(this.resourceCache[this.currentTable]);
     
