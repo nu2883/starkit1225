@@ -473,88 +473,7 @@ const app = {
 
   // --- DASHBOARD SECTION ---
 
-async selectResource(id) {
-  if (this.currentTable === id && this.currentView === "data") return;
 
-  console.log(`[NAVIGATE] Switching to resource: ${id}`);
-
-  // ======================================================
-  // 1. CLEAN UP TOTAL (PENTING!)
-  // Bersihkan semua sisa data menu sebelumnya agar tidak "leak"
-  // ======================================================
-  this.resetViews();
-  
-  const head = document.getElementById("t-head");
-  const body = document.getElementById("t-body");
-  const pagination = document.getElementById("pagination-controls"); // Sesuaikan ID pagination Anda
-  const emptyState = document.getElementById("empty-state");
-
-  if (head) head.innerHTML = ""; 
-  if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Loading Permission...</td></tr>`;
-  if (pagination) pagination.innerHTML = "";
-  if (emptyState) emptyState.classList.add("hidden");
-
-  // ======================================================
-  // 2. SET STATE & SYNC PERMISSIONS
-  // ======================================================
-  this.currentTable = id;
-  this.currentView = "data";
-  
-  const resourceKey = id.toLowerCase().trim();
-  let perm = this.permissions[resourceKey];
-
-  // Pastikan mode siap sebelum lanjut ke render
-  if (!perm) {
-    console.warn(`[SECURITY] Permission untuk ${id} tidak ditemukan. Fetching...`);
-    await this.loadPermissions();
-    perm = this.permissions[resourceKey];
-  }
-
-  this.modes = {
-    can_add: perm?.add === true,
-    can_edit: perm?.edit === true,
-    can_delete: perm?.delete === true,
-    policy: perm?.policy || "ALL"
-  };
-
-  // ======================================================
-  // 3. UI PREPARATION
-  // ======================================================
-  const crudView = document.getElementById("view-crud");
-  const searchContainer = document.getElementById("search-container");
-
-  if (crudView) {
-    crudView.classList.remove("hidden");
-    crudView.style.visibility = "visible";
-  }
-  if (searchContainer) searchContainer.classList.remove("hidden");
-
-  const titleEl = document.getElementById("cur-title");
-  if (titleEl) titleEl.innerText = id.replace(/_/g, " ").toUpperCase();
-
-  this.syncSidebarUI(id);
-
-  // ======================================================
-  // 4. LOAD DATA & RENDER
-  // ======================================================
-  if (this.resourceCache[id]) {
-    console.log(`[CACHE] Rendering ${id} from memory...`);
-    // Update schema sebelum render
-    this.schema = this.schemaCache[id]?.schema || {};
-    
-    // Langsung render (ini akan mengisi head, body, dan pagination secara utuh)
-    this.renderTable(this.resourceCache[id]);
-    
-    // Background refresh untuk memastikan data tetap up-to-date
-    this.loadResource();
-  } else {
-    console.log(`[FETCH] Loading ${id} from Server...`);
-    if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Mengambil Data...</td></tr>`;
-    
-    // loadResource harus memanggil renderTable di dalamnya setelah data didapat
-    await this.loadResource();
-  }
-},
 
   renderSidebar() {
     const list = document.getElementById("resource-list");
@@ -581,29 +500,6 @@ async selectResource(id) {
 
   // --- RENDER DASHBOARD UTAMA BERDASARKAN CONFIG ---
 
-  resetViews() {
-    // Daftar semua container view yang ada di HTML
-    const views = [
-      "view-crud",
-      "view-app-studio",
-      "view-schema-explorer",
-      "view-dashboard",
-      "view-dashboard-builder", // Tambahkan ini agar tidak "nyangkut"
-      "automation-builder-section",
-      "view-permissions",
-      "view-row-policy",
-    ];
-
-    views.forEach((v) => {
-      const el = document.getElementById(v);
-      if (el) el.classList.add("hidden");
-    });
-
-    // Sembunyikan juga elemen header yang spesifik untuk tabel
-    document.getElementById("search-container")?.classList.add("hidden");
-    document.getElementById("btn-add")?.classList.add("hidden");
-    document.getElementById("view-mode")?.classList.add("hidden");
-  },
 
   syncSidebarUI(id) {
     // 1. Bersihkan semua status active dari semua tombol navigasi
@@ -1059,166 +955,6 @@ async init() {
  * STARKIT VOYAGER FRONTEND ENGINE - v44.4.1 (REFERENCE MODE PATCHED)
  * Memastikan tabel lookup dengan mode "reference" terdeteksi dan di-cache.
  */
-async loadResource(forceRefresh = false) {
-  const vm = document.getElementById("view-mode")?.value || "active";
-  const btnRefresh = document.getElementById("btn-refresh");
-  const btnAdd = document.getElementById("btn-add");
-  const titleEl = document.getElementById("cur-title");
-
-  /* =====================================================
-   * UI START - Memberikan feedback visual kepada user
-   * ===================================================== */
-  if (btnRefresh) btnRefresh.classList.add("animate-spin");
-  if (titleEl) {
-    titleEl.innerText = "SYNC... " + this.currentTable.toUpperCase() + "...";
-  }
-
-  // Jika force refresh, kosongkan cache agar mengambil data paling fresh (RLS Update)
-  if (forceRefresh) {
-    this.resourceCache[this.currentTable] = [];
-  }
-
-  try {
-    /* =====================================================
-     * 0. LOAD TABLE UTAMA (Memicu RLS di Backend)
-     * ===================================================== */
-    const d = await this.get({
-      action: "read",
-      table: this.currentTable,
-      viewMode: vm,
-      ua: navigator.userAgent, // Wajib disertakan untuk validasi Security di BE
-      _t: forceRefresh ? Date.now() : null,
-    });
-
-    if (btnRefresh) btnRefresh.classList.remove("animate-spin");
-
-    if (!d || d.success !== true) {
-      throw new Error(d?.message || "Invalid response");
-    }
-
-    /* =====================================================
-     * 1. SCHEMA NORMALIZATION (PATUH TOTAL)
-     * ===================================================== */
-    const rawSchema = d.schema;
-    this.schema = {};
-
-    if (
-      rawSchema &&
-      typeof rawSchema === "object" &&
-      !Array.isArray(rawSchema)
-    ) {
-      // Native schema object (v44+)
-      this.schema = rawSchema;
-    } else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
-      // Legacy fallback (Support untuk versi lama)
-      const headers = rawSchema[0];
-      const configs = rawSchema[1];
-
-      headers.forEach((h, i) => {
-        let cfg = configs[i];
-        if (typeof cfg === "string") {
-          try {
-            cfg = JSON.parse(cfg);
-          } catch {
-            cfg = {};
-          }
-        }
-        this.schema[h] = { ...cfg, name: h, headerIdx: i };
-      });
-    }
-
-    /* =====================================================
-     * 2. MODES & ROW CACHE (TABLE AKTIF)
-     * ===================================================== */
-    this.modes = d.modes || {
-      add: { can: true },
-      edit: { can: true },
-      delete: { can: true },
-      browse: { can: true },
-    };
-
-    // d.rows di sini sudah disaring secara otomatis oleh BE melalui RLS
-    const rows = Array.isArray(d.rows) ? d.rows : [];
-    this.resourceCache[this.currentTable] = rows;
-
-    /* =====================================================
-     * 3. 🔥 LOOKUP PRELOAD ENGINE (FIXED FOR REFERENCE MODE)
-     * ===================================================== */
-    // Reset lookupTables agar tidak membawa dependensi dari tabel sebelumnya
-    this.lookupTables = new Set(); 
-
-    Object.values(this.schema).forEach((col) => {
-      if (
-        col.type === "LOOKUP" &&
-        col.lookup?.table &&
-        (col.lookup.mode === "browse" || col.lookup.mode === "reference")
-      ) {
-        this.lookupTables.add(col.lookup.table);
-      }
-    });
-
-    // Jalankan pengambilan data untuk setiap tabel lookup yang ditemukan
-    for (const table of this.lookupTables) {
-      // Hanya ambil jika belum ada di cache atau sedang force refresh
-      if (!this.resourceCache[table] || forceRefresh) {
-        console.log(`🔁 Preloading lookup [${table}] dengan mode: reference/browse`);
-
-        const ref = await this.get({
-          action: "read",
-          table: table,
-          ua: navigator.userAgent,
-          source: "lookup", // 🔑 INTENT: Memberitahu BE untuk memicu getLookupFields()
-          mode: "browse",   // 🔑 MODE: Memberitahu BE ini request pembacaan data
-        });
-
-        if (ref && ref.success === true) {
-          // Simpan data "clean" (tanpa kolom sensitif) ke cache
-          this.resourceCache[table] = Array.isArray(ref.rows) ? ref.rows : [];
-          console.log(`✅ Lookup [${table}] berhasil di-cache. Total: ${this.resourceCache[table].length} baris.`);
-        } else {
-          console.warn(`⚠️ Preload gagal untuk tabel: ${table}. Pastikan tabel ada di Spreadsheet.`);
-          this.resourceCache[table] = [];
-        }
-      }
-    }
-
-    /* =====================================================
-     * 4. ADD BUTTON VISIBILITY
-     * ===================================================== */
-    if (btnAdd) {
-      const canAdd =
-        this.modes?.add?.can === true || this.modes?.can_add === true;
-
-      if (canAdd && vm === "active") {
-        btnAdd.classList.replace("hidden", "flex");
-      } else {
-        btnAdd.classList.replace("flex", "hidden");
-      }
-    }
-
-    /* =====================================================
-     * 5. RENDER CORE
-     * ===================================================== */
-    this.renderTable(rows);
-
-    if (titleEl) {
-      titleEl.innerText = this.currentTable.replace(/_/g, " ").toUpperCase();
-    }
-    
-    // Feedback ke log jika RLS aktif
-    if (d.query_mode === "lookup") {
-      console.info("🛡️ Row Level Security: Active and Applied.");
-    }
-
-  } catch (err) {
-    console.error("🔥 loadResource fatal:", err);
-
-    if (btnRefresh) btnRefresh.classList.remove("animate-spin");
-    if (titleEl) titleEl.innerText = "LOAD ERROR";
-
-    alert("Gagal memuat data: " + err.message);
-  }
-},
 
 
 async loadPermissions() {
@@ -1290,6 +1026,279 @@ async loadPermissions() {
   console.groupEnd();
 
   return true;
+},
+
+/**
+ * STARKIT ENGINE - GOLD MASTER EDITION
+ * Optimized for: 1000 SA Users | Mobile-First | Atomic State | High-Speed SPA
+ */
+
+/**
+ * Optimized applyPermissions (Explisit Comparison)
+ */
+applyPermissions(perm) {
+  const nextModes = {
+    can_add: perm.add === true,
+    can_edit: perm.edit === true,
+    can_delete: perm.delete === true,
+    policy: perm.policy || "ALL"
+  };
+
+  if (
+    this.modes?.can_add === nextModes.can_add &&
+    this.modes?.can_edit === nextModes.can_edit &&
+    this.modes?.can_delete === nextModes.can_delete &&
+    this.modes?.policy === nextModes.policy
+  ) return;
+
+  this.modes = nextModes;
+  this.syncActionButtons();
+},
+
+syncActionButtons() {
+  const { add, edit, delete: del } = this.dom.btns;
+  if (add) add.classList.toggle("hidden", !this.modes.can_add);
+  if (edit) edit.classList.toggle("hidden", !this.modes.can_edit);
+  if (del) del.classList.toggle("hidden", !this.modes.can_delete);
+},
+
+/**
+ * Unified Reset Views (Patch: Consistent DOM Cache usage)
+ */
+resetViews(requestId) {
+  if (requestId && this.lastRequestId !== requestId) return;
+  
+  // RESET STATE
+  this.selectedRow = null;
+  this.editMode = false;
+  this.formData = {};
+  this.currentPage = 1;
+  this.searchQuery = "";
+  this.modes = { can_add: false, can_edit: false, can_delete: false, policy: "DENY" };
+
+  // RESET UI VISIBILITY (Using cached DOM elements)
+  const views = ["view-crud", "view-app-studio", "view-schema-explorer", "view-dashboard", 
+                 "view-dashboard-builder", "automation-builder-section", "view-permissions", "view-row-policy"];
+  
+  views.forEach(v => {
+    const el = document.getElementById(v);
+    if (el) el.classList.add("hidden");
+  });
+
+  const { search, btns } = this.dom || {};
+  if (search) search.classList.add("hidden");
+  if (btns?.add) btns.add.classList.add("hidden");
+  if (btns?.mode) btns.mode.classList.add("hidden");
+},
+
+/**
+ * SELECT RESOURCE - THE GATEKEEPER
+ * Menangani navigasi antar resource dengan proteksi Atomic Request.
+ */
+async selectResource(resourceKey) {
+  // 0. GUARD: Jangan reload jika resource sama
+  if (this.currentTable === resourceKey && this.currentView === "data") return;
+
+  // 1. GENERATE ATOMIC TICKET
+  this._reqCounter ??= 0;
+  const requestId = `${Date.now()}-${++this._reqCounter}`;
+  this.lastRequestId = requestId;
+
+  console.log(`[NAVIGATE] Switching to: ${resourceKey} | UID: ${requestId}`);
+
+  // 2. DOM CACHING (Optimasi Performa)
+  this.dom ??= {
+    head: document.getElementById("t-head"),
+    body: document.getElementById("t-body"),
+    pagination: document.getElementById("pagination-controls"),
+    empty: document.getElementById("empty-state"),
+    crudView: document.getElementById("view-crud"),
+    search: document.getElementById("search-container"),
+    title: document.getElementById("cur-title"),
+    btns: {
+      add: document.getElementById("btn-add"),
+      edit: document.getElementById("btn-edit"),
+      delete: document.getElementById("btn-delete"),
+      mode: document.getElementById("view-mode"),
+      refresh: document.getElementById("btn-refresh")
+    }
+  };
+
+  // 3. ATOMIC DESTRUCTIVE RESET
+  this.resetViews(requestId); 
+  
+  // 4. SET CORE STATE (WAJIB SEBELUM ASYNC)
+  this.currentTable = resourceKey;
+  this.currentView = "data";
+
+  // 5. UI CLEANUP & LOADING FEEDBACK
+  const { head, body, pagination, empty, crudView, search, title } = this.dom;
+  if (head) head.innerHTML = "";
+  if (body) {
+    body.innerHTML = `<tr><td colspan="100" class="p-10 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Syncing ${resourceKey.toUpperCase()}...</td></tr>`;
+  }
+  if (pagination) pagination.innerHTML = "";
+  if (empty) empty.classList.add("hidden");
+
+  // 6. BASE UI SYNC
+  if (crudView) {
+    crudView.classList.remove("hidden");
+    crudView.style.visibility = "visible";
+  }
+  if (search) search.classList.remove("hidden");
+  if (title) title.innerText = "LOADING...";
+
+  this.syncSidebarUI(resourceKey, requestId);
+
+  // 7. PERMISSION HANDLING (Optimistic)
+  this.applyPermissions({ add: false, edit: false, delete: false, policy: "DENY" });
+  
+  const cachedPerm = this.permissions?.[resourceKey];
+  if (cachedPerm) {
+    this.applyPermissions(cachedPerm);
+  } else {
+    this._permPromise ??= this.loadPermissions(); 
+    this._permPromise.then(() => {
+      if (this.lastRequestId === requestId) {
+        const p = this.permissions?.[resourceKey];
+        if (p) this.applyPermissions(p);
+      }
+      this._permPromise = null; 
+    });
+  }
+
+  // 8. DATA LOADING ENGINE (Cache First + Silent Refresh)
+  if (this.resourceCache?.[resourceKey] && this.resourceCache[resourceKey].length > 0) {
+    console.log(`[CACHE] Render ${resourceKey}`);
+    this.schema = this.schemaCache?.[resourceKey]?.schema || {};
+    this.renderTable(this.resourceCache[resourceKey]);
+
+    const scheduleRefresh = window.requestIdleCallback || ((cb) => setTimeout(cb, 100));
+    scheduleRefresh(() => {
+      if (this.lastRequestId === requestId) {
+        this.loadResource({ silent: true, requestId });
+      }
+    });
+  } else {
+    console.log(`[FETCH] First load ${resourceKey}`);
+    await this.loadResource({ silent: false, requestId });
+  }
+},
+
+/**
+ * LOAD RESOURCE - THE EXECUTOR
+ * Menangani Fetch Data, Schema Normalization, dan Lookup Preload.
+ */
+async loadResource(options = { silent: false, requestId: null, forceRefresh: false }) {
+  const reqId = options.requestId || this.lastRequestId;
+  const targetTable = this.currentTable;
+  
+  // POS 1: Sebelum eksekusi, cek validitas tiket
+  if (this.lastRequestId !== reqId) return;
+
+  const { btns, title: titleEl } = this.dom;
+  const vm = btns?.mode?.value || "active";
+
+  // UI Feedback
+  if (btns?.refresh) btns.refresh.classList.add("animate-spin");
+  if (titleEl && !options.silent) {
+    titleEl.innerText = "SYNC... " + targetTable.toUpperCase() + "...";
+  }
+
+  if (options.forceRefresh) {
+    this.resourceCache[targetTable] = [];
+  }
+
+  try {
+    // 0. FETCH DATA (Memicu RLS di Backend)
+    const d = await this.get({
+      action: "read",
+      table: targetTable,
+      viewMode: vm,
+      ua: navigator.userAgent,
+      _t: options.forceRefresh ? Date.now() : null,
+    });
+
+    // ======================================================
+    // POS 2: THE KILL GUARD (Bungkam response basi)
+    // ======================================================
+    if (this.lastRequestId !== reqId) {
+      console.warn(`[KILL] Data ${targetTable} diabaikan (Request Outdated)`);
+      return; 
+    }
+
+    if (btns?.refresh) btns.refresh.classList.remove("animate-spin");
+
+    if (!d || d.success !== true) {
+      throw new Error(d?.message || "Invalid response");
+    }
+
+    // 1. SCHEMA NORMALIZATION
+    const rawSchema = d.schema;
+    this.schema = {};
+    if (rawSchema && typeof rawSchema === "object" && !Array.isArray(rawSchema)) {
+      this.schema = rawSchema;
+    } else if (Array.isArray(rawSchema) && rawSchema.length >= 2) {
+      const [headers, configs] = rawSchema;
+      headers.forEach((h, i) => {
+        let cfg = configs[i];
+        if (typeof cfg === "string") { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+        this.schema[h] = { ...cfg, name: h, headerIdx: i };
+      });
+    }
+
+    // 2. MODES & ROW CACHE
+    this.modes = d.modes || { add: { can: true }, edit: { can: true }, delete: { can: true }, browse: { can: true } };
+    const rows = Array.isArray(d.rows) ? d.rows : [];
+    this.resourceCache[targetTable] = rows;
+
+    // 3. LOOKUP PRELOAD ENGINE
+    this.lookupTables = new Set(); 
+    Object.values(this.schema).forEach((col) => {
+      if (col.type === "LOOKUP" && col.lookup?.table && (col.lookup.mode === "browse" || col.lookup.mode === "reference")) {
+        this.lookupTables.add(col.lookup.table);
+      }
+    });
+
+    for (const table of this.lookupTables) {
+      // Validasi tiket sebelum masuk ke loop async lookup
+      if (this.lastRequestId !== reqId) return;
+
+      if (!this.resourceCache[table] || options.forceRefresh) {
+        const ref = await this.get({
+          action: "read", table: table, ua: navigator.userAgent, source: "lookup", mode: "browse"
+        });
+        
+        // Validasi tiket setelah fetch lookup (Double Guard)
+        if (this.lastRequestId !== reqId) return;
+
+        if (ref && ref.success === true) {
+          this.resourceCache[table] = Array.isArray(ref.rows) ? ref.rows : [];
+        }
+      }
+    }
+
+    // 4. UI FINALIZATION
+    if (btns?.add) {
+      const canAdd = this.modes?.add?.can === true || this.modes?.can_add === true;
+      btns.add.classList.toggle("hidden", !(canAdd && vm === "active"));
+      btns.add.classList.toggle("flex", (canAdd && vm === "active"));
+    }
+
+    // 5. RENDER CORE
+    if (this.currentTable === targetTable) {
+      this.renderTable(rows);
+      if (titleEl) titleEl.innerText = targetTable.replace(/_/g, " ").toUpperCase();
+    }
+
+  } catch (err) {
+    // POS 4: Error Isolation
+    if (this.lastRequestId === reqId) {
+      if (btns?.refresh) btns.refresh.classList.remove("animate-spin");
+      if (titleEl) titleEl.innerText = "LOAD ERROR";
+      alert("Gagal memuat data: " + err.message);
+    }
+  }
 },
 
 };

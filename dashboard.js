@@ -638,7 +638,7 @@ renderDashboardBuilder: function () {
             </label>
             <select onchange="app.updateWidgetConfig(${index}, 'allowed_role', this.value)" 
               class="w-full p-4 bg-indigo-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-indigo-500/20 text-indigo-700">
-              <option value="all" ${conf.allowed_role === 'all' ? 'selected' : ''}>🌍 SEMUA ROLE</option>
+              <option value="all" ${conf.allowed_role === 'all' ? 'selected' : 'all'}>🌍 SEMUA ROLE</option>
               ${availableRoles.map(r => {
                 const rName = r.role_name || r.name;
                 return `<option value="${rName}" ${conf.allowed_role === rName ? 'selected' : ''}>🔐 ${rName.toUpperCase()}</option>`;
