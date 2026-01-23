@@ -31,10 +31,12 @@ Object.assign(app, {
 
 
   // --- TOGGLE SORT FUNCTION ---
-  toggleSort() {
-    this.tableSortDesc = !this.tableSortDesc;
-    this.renderTable(this.currentDataView);
-  },
+toggleSort() {
+  this.tableSortDesc = !this.tableSortDesc;
+  this.notifyDataChange(); // 🔥 Patch #1: Invalidate Cache
+  // Selalu gunakan resourceCache asli, bukan currentDataView yang sudah terpotong pagination
+  this.renderTable(this.resourceCache[this.currentTable] || []);
+},
 
   /**
    * HANDLERS FOR SECURITY (XSS GUARD)
@@ -159,126 +161,7 @@ Object.assign(app, {
  * Target: 1000 SA Users (Consistent Field Level Security)
  * Fitur: Mengunci field berdasarkan policy baik saat NEW maupun EDIT.
  */
-  async openForm(data = null) {
-    this.editingId = data ? data.id : null;
-    const modal = document.getElementById("f-modal");
-    const container = document.getElementById("f-fields");
-    if (!modal || !container) return;
 
-    // 1. Set judul modal & Tampilkan
-    document.getElementById("modal-title").innerText = this.editingId
-      ? `EDIT ${this.currentTable.toUpperCase()}`
-      : `NEW ${this.currentTable.toUpperCase()}`;
-    modal.classList.replace("hidden", "flex");
-
-    // 2. Ambil Permission & Field Policy untuk Resource ini
-    const currentGov = this.modes || {};
-    const fieldPolicy = currentGov.field_policy || null; // Array of allowed fields (e.g., ["status", "catatan"])
-
-    // 3. Tentukan fields yang akan ditampilkan
-    let fields = this.activeFields && this.activeFields.length > 0
-      ? this.activeFields
-      : Object.keys(this.schema || {});
-
-    fields = fields.filter(f => ![
-      "id", "created_at", "created_by", "deleted_at",
-      "is_deleted", "salt", "password"
-    ].includes(f)
-    );
-
-    let html = "";
-    for (const f of fields) {
-      const s = this.schema && this.schema[f] ? this.schema[f] : {
-        type: "TEXT",
-        label: f.replace(/_/g, " ").toUpperCase(),
-        required: false,
-      };
-      if (s.hidden) continue;
-
-      const val = data ? data[f] || "" : "";
-
-      // 🛡️ LOGIKA FIELD LEVEL SECURITY (FLS) - UNIVERSAL GUARD
-      // Sistem mengunci field jika:
-      // A. Memang disabled secara permanen di Schema (Autofill/Formula)
-      // B. Ada fieldPolicy AND field ini tidak terdaftar di dalamnya (Policy Enforcement)
-
-      let isLockedBySystem = String(s.disabled).toLowerCase() === "true" ||
-        s.type === "AUTOFILL" ||
-        s.type === "FORMULA";
-
-      let isLockedByPolicy = false;
-      if (fieldPolicy && Array.isArray(fieldPolicy)) {
-        // Berlaku untuk CREATE & EDIT: Jika fieldPolicy ada isinya, 
-        // maka field yang tidak terdaftar otomatis terkunci.
-        isLockedByPolicy = !fieldPolicy.includes(f.toLowerCase());
-      }
-
-      const isLocked = isLockedBySystem || isLockedByPolicy;
-      const isRequired = s.required === true;
-
-      // Styling: Berikan visual berbeda untuk field yang terkunci oleh kebijakan
-      const lockClass = isLocked
-        ? "bg-slate-100 text-slate-400 border-dashed cursor-not-allowed"
-        : "bg-slate-50 text-slate-700";
-
-      const labelHtml = this.escapeHTML(s.label || f.replace(/_/g, " "));
-      const requiredMarker = isRequired && !isLocked ? '<span class="text-red-500 ml-1">*</span>' : "";
-
-      html += `<div class="mb-4 text-left">
-    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest text-left">
-      ${labelHtml}${requiredMarker} ${isLockedByPolicy ? '<i class="fa-solid fa-lock ml-1 text-[8px]" title="Restricted by Policy"></i>' : ''}
-    </label>`;
-
-      if (s.type === "LOOKUP" && s.lookup) {
-        html += `<select id="f-${f}" name="${f}" ${isRequired ? "required" : ""} 
-               ${isLocked ? "disabled" : ""}
-               onchange="app.triggerLookup('${f}', this.value)" 
-               class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">
-               </select>`;
-      } else {
-        const inputType = s.type === "NUMBER" || s.type === "CURRENCY" ? "number" : s.type === "DATE" ? "date" : "text";
-        html += `<input id="f-${f}" name="${f}" type="${inputType}" value="${val}" 
-              ${isLocked ? "disabled" : ""} 
-              ${isRequired ? "required" : ""} 
-              oninput="app.runLiveFormula()" 
-              class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none ${lockClass}">`;
-      }
-
-      // Shield: Hidden input agar data yang "readonly" tetap terikut saat save (untuk keperluan formula/autofill)
-      if (isLocked) html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${val}">`;
-      html += `</div>`;
-    }
-
-    container.innerHTML = html;
-
-    // 4. Populate lookup fields
-    for (const f of fields) {
-      const s = this.schema ? this.schema[f] : null;
-      if (s?.type === "LOOKUP")
-        await this.populateLookup(f, s.lookup.table, s.lookup.field, data ? data[f] : "");
-    }
-
-    this.runLiveFormula();
-    this.setupKeyHandlers();
-
-        // --- EVENT LISTENER: Enter = commit, Escape = close ---
-    if (this._formKeyHandler)
-      document.removeEventListener("keydown", this._formKeyHandler);
-
-    const keyHandler = (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        document.getElementById("btn-commit")?.click(); // PASTIKAN ID BENAR
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        this.closeForm();
-      }
-    };
-
-    this._formKeyHandler = keyHandler;
-    document.addEventListener("keydown", keyHandler);
-  },
 
   
 
@@ -450,157 +333,6 @@ Object.assign(app, {
   // Tambahkan properti ini di dalam objek app Anda
 // processingRows: new Set(),
 
-/**
- * 🎨 RENDER TABLE (Optimistic UI Ready)
- */
-renderTable(rows = []) {
-  const head = document.getElementById("t-head");
-  const body = document.getElementById("t-body");
-  const emptyState = document.getElementById("empty-state");
-  const btnAdd = document.getElementById("btn-add");
-  const viewMode = document.getElementById("view-mode")?.value || "active";
-
-  // ======================================================
-  // 🛡️ SECURITY GUARD: CEK PERMISSIONS (CRITICAL)
-  // ======================================================
-  // Jika this.modes belum didefinisikan oleh selectResource, jangan tampilkan apapun.
-  if (!this.modes || Object.keys(this.modes).length === 0) {
-    console.error("[SECURITY] renderTable ditolak: Izin (modes) belum siap.");
-    if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center text-red-500 font-bold">Memvalidasi izin akses...</td></tr>`;
-    return;
-  }
-
-  const m = this.modes;
-  const canAdd = m.can_add === true;
-  const canEdit = m.can_edit === true;
-  const canDelete = m.can_delete === true;
-
-  // Kontrol Tombol Tambah (Global)
-  if (btnAdd) {
-    viewMode === "active" && canAdd
-      ? btnAdd.classList.replace("hidden", "flex")
-      : btnAdd.classList.replace("flex", "hidden");
-  }
-
-  // ======================================================
-  // FIELD DETERMINATION
-  // ======================================================
-  let fields = [];
-  if (this.schema && !Array.isArray(this.schema) && Object.keys(this.schema).length > 0) {
-    fields = Object.keys(this.schema);
-  } else if (rows.length > 0) {
-    fields = Object.keys(rows[0]);
-  }
-
-  this.activeFields = fields.filter(
-    f =>
-      isNaN(f) &&
-      !["id", "is_deleted", "deleted_at", "salt", "password", "created_at", "created_by"].includes(f)
-  );
-
-  // ======================================================
-  // SORT LOGIC
-  // ======================================================
-  const sortedRows = [...rows].sort((a, b) => {
-    const tsA = new Date(a.created_at || 0).getTime() || 0;
-    const tsB = new Date(b.created_at || 0).getTime() || 0;
-    return this.tableSortDesc ? tsB - tsA : tsA - tsB;
-  });
-
-  this.currentDataView = sortedRows;
-
-  // ======================================================
-  // PAGINATION CALCULATIONS
-  // ======================================================
-  this.pagination.totalRows = sortedRows.length;
-  this.pagination.totalPages = Math.ceil(
-    sortedRows.length / this.pagination.perPage
-  );
-
-  if (this.pagination.currentPage > this.pagination.totalPages) {
-    this.pagination.currentPage = Math.max(1, this.pagination.totalPages);
-  }
-
-  const startIdx = (this.pagination.currentPage - 1) * this.pagination.perPage;
-  const pageRows = sortedRows.slice(startIdx, startIdx + this.pagination.perPage);
-
-  // ======================================================
-  // EMPTY STATE HANDLING
-  // ======================================================
-  if (pageRows.length === 0) {
-    if (body) body.innerHTML = "";
-    if (emptyState) emptyState.classList.remove("hidden");
-    this.renderPaginationControls();
-    return;
-  }
-
-  if (emptyState) emptyState.classList.add("hidden");
-
-  // ======================================================
-  // RENDER HEADER
-  // ======================================================
-  if (head) {
-    head.innerHTML = `<tr>
-      ${this.activeFields.map(f => {
-        const label = this.schema?.[f]?.label || f.replace(/_/g, " ").toUpperCase();
-        return `<th class="p-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-          ${this.escapeHTML(label)}
-          <button onclick="app.toggleSort()" class="ml-1 text-xs">
-            ${this.tableSortDesc ? "↓" : "↑"}
-          </button>
-        </th>`;
-      }).join("")}
-      <th class="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-        Actions
-      </th>
-    </tr>`;
-  }
-
-  // ======================================================
-  // RENDER BODY (DENGAN KONTROL EDIT/DELETE)
-  // ======================================================
-  if (body) {
-    body.innerHTML = pageRows.map(row => {
-      const isLocked = this.processingRows?.has(String(row.id));
-      const lockStyle = isLocked ? 'style="opacity:0.4;pointer-events:none;"' : '';
-      const spinner = isLocked ? '<i class="fa-solid fa-spinner fa-spin mr-2"></i>' : '';
-
-      return `
-        <tr id="row-${row.id}" ${lockStyle}
-            class="hover:bg-blue-50/50 border-b border-slate-100 transition-colors group">
-          ${this.activeFields.map((f, i) => {
-            let val = row[f] ?? "-";
-            if (f.toLowerCase().includes("harga") && val !== "-") {
-              val = new Intl.NumberFormat("id-ID", {
-                style: "currency",
-                currency: "IDR",
-                minimumFractionDigits: 0
-              }).format(val);
-            }
-            return `<td class="p-6 font-medium text-slate-600 text-sm truncate max-w-[200px]">
-              ${i === 0 ? spinner : ""}${this.escapeHTML(String(val))}
-            </td>`;
-          }).join("")}
-          <td class="p-6 text-right space-x-2 whitespace-nowrap">
-            ${canEdit
-              ? `<button data-id="${row.id}" onclick="app.handleEdit(this)"
-                   class="inline-flex items-center justify-center p-2.5 text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-xl shadow-sm transition-all">
-                   <i class="fa-solid fa-pen-to-square"></i>
-                 </button>`
-              : ""}
-            ${viewMode === "active" && canDelete
-              ? `<button onclick="app.remove('${this.currentTable}','${row.id}')"
-                   class="inline-flex items-center justify-center p-2.5 text-red-600 bg-red-50 hover:bg-red-600 hover:text-white rounded-xl shadow-sm transition-all">
-                   <i class="fa-solid fa-trash-can"></i>
-                 </button>`
-              : ""}
-          </td>
-        </tr>`;
-    }).join("");
-  }
-
-  this.renderPaginationControls();
-},
 
 /**
  * 💾 SAVE (Optimistic Create & Update)
@@ -641,25 +373,333 @@ processingRows: new Set(),
     this.processingRows.delete(String(id));
   },
 
+
+/**
+ * CORE TABLE STATE ENGINE - JURAGAN SAAS SHEET
+ * Final Hardened Version
+ */
+renderTable(inputRows = []) {
+  // 🔥 Patch #3: Defensive Clone (Side-effect free)
+  const rows = Array.isArray(inputRows) ? [...inputRows] : [];
+  
+  const head = document.getElementById("t-head");
+  const body = document.getElementById("t-body");
+  const emptyState = document.getElementById("empty-state");
+  const btnAdd = document.getElementById("btn-add");
+  const viewMode = document.getElementById("view-mode")?.value || "active";
+  const searchInput = document.getElementById("search-input");
+  const searchTerm = searchInput?.value?.toLowerCase() || "";
+
+  // ======================================================
+  // 🛡️ SECURITY & ENGINE GUARD
+  // ======================================================
+  if (!this.modes || Object.keys(this.modes).length === 0) {
+    if (body) body.innerHTML = `<tr><td colspan="100" class="p-10 text-center text-red-500 font-bold italic font-mono">CORE_ENGINE_UNREADY: Waiting for Security Handshake...</td></tr>`;
+    return;
+  }
+
+  // Init Search Map jika belum ada (Idiot-proof)
+  if (!(this._searchIndex instanceof Map)) {
+    this._searchIndex = new Map();
+  }
+
+  // Tombol Tambah Permission
+  if (btnAdd) {
+    (viewMode === "active" && this.modes.can_add) 
+      ? btnAdd.classList.replace("hidden", "flex") 
+      : btnAdd.classList.replace("flex", "hidden");
+  }
+
+  // ======================================================
+  // 🧩 SCHEMA & DATA SIGNATURE (ANTI-COLLISION)
+  // ======================================================
+  let fields = this.schema ? Object.keys(this.schema) : (rows[0] ? Object.keys(rows[0]) : []);
+  this.activeFields = fields.filter(f => 
+    isNaN(f) && !["id", "is_deleted", "deleted_at", "salt", "password", "created_at", "created_by"].includes(f)
+  );
+  
+  const fieldSignature = this.activeFields.join("|");
+  
+  // 🛡️ TRIPLE-GUARD + CHECKSUM RINGAN (O(1))
+  // Memantau Awal, Akhir, dan Panjang untuk deteksi mutasi tengah
+  const rowsSignature = `${this.currentTable}:${rows.length}:${rows[0]?.id || 'x'}:${rows[rows.length-1]?.id || 'y'}`;
+
+  // ======================================================
+  // 🔍 STEP 1: SEARCH INDEXING (DEFENSIVE)
+  // ======================================================
+  if (
+    this._lastSearchVersion !== this._dataVersion || 
+    this._lastSearchFieldSignature !== fieldSignature ||
+    this._lastRowsSignature !== rowsSignature
+  ) {
+    this._searchIndex.clear(); 
+    
+    rows.forEach((row, index) => {
+      // Hard Guard: Jangan index data tanpa ID (Enterprise Rule)
+      if (!row.id) {
+        console.warn(`[CORE] Row ${index} skipped: Missing ID.`, row);
+        return;
+      }
+
+      const searchContent = this.activeFields
+        .map(f => String(row[f] || "").toLowerCase())
+        .join(" ");
+      
+      this._searchIndex.set(row.id, searchContent);
+    });
+
+    this._lastSearchVersion = this._dataVersion;
+    this._lastSearchFieldSignature = fieldSignature;
+    this._lastRowsSignature = rowsSignature;
+    this._triggerSortRefilter = true; // Invalidate Sort Cache
+    
+    console.log(`[CORE] Index Rebuilt: ${rows.length} rows (Integrity Verified)`);
+  }
+
+  // Filter dengan Index (O(n))
+  const filteredRows = searchTerm 
+    ? rows.filter(row => row.id && this._searchIndex.get(row.id)?.includes(searchTerm)) 
+    : rows;
+
+  // Reset Pagination jika search context berubah
+  if (this._lastSearchTerm !== searchTerm) {
+    this.pagination.currentPage = 1;
+    this._lastSearchTerm = searchTerm;
+    this._triggerSortRefilter = true;
+  }
+
+  // ======================================================
+  // ⚡ STEP 2: DETERMINISTIC SORTING (CACHE-SYNCED)
+  // ======================================================
+  if (
+    this._lastSortDesc !== this.tableSortDesc || 
+    this._lastSortVersion !== this._dataVersion ||
+    this._lastSortedSearchTerm !== searchTerm ||
+    this._lastSortSignature !== fieldSignature ||
+    this._triggerSortRefilter
+  ) {
+    this._sortedCache = [...filteredRows].sort((a, b) => {
+      // Lazy-loading timestamp (Mutation accepted as performance trade-off)
+      const tsA = a._ts || (a._ts = new Date(a.created_at || 0).getTime() || 0);
+      const tsB = b._ts || (b._ts = new Date(b.created_at || 0).getTime() || 0);
+      return this.tableSortDesc ? tsB - tsA : tsA - tsB;
+    });
+    
+    this._lastSortDesc = this.tableSortDesc;
+    this._lastSortVersion = this._dataVersion;
+    this._lastSortedSearchTerm = searchTerm;
+    this._lastSortSignature = fieldSignature;
+    this._triggerSortRefilter = false;
+  }
+
+  const finalDisplayRows = this._sortedCache;
+  this.currentDataView = finalDisplayRows;
+
+  // ======================================================
+  // 📏 STEP 3: PAGINATION
+  // ======================================================
+  this.pagination.totalRows = finalDisplayRows.length;
+  this.pagination.totalPages = Math.ceil(finalDisplayRows.length / this.pagination.perPage) || 1;
+
+  if (this.pagination.currentPage > this.pagination.totalPages) {
+    this.pagination.currentPage = Math.max(1, this.pagination.totalPages);
+  }
+
+  const startIdx = (this.pagination.currentPage - 1) * this.pagination.perPage;
+  const pageRows = finalDisplayRows.slice(startIdx, startIdx + this.pagination.perPage);
+
+  // ======================================================
+  // 🖼️ STEP 4: RENDER UI (ATOMCITY READY)
+  // ======================================================
+  if (pageRows.length === 0) {
+    if (body) body.innerHTML = "";
+    if (emptyState) emptyState.classList.remove("hidden");
+    if (head) head.innerHTML = "";
+    this.renderPaginationControls();
+    return;
+  }
+  if (emptyState) emptyState.classList.add("hidden");
+
+  // Render Header
+  if (head) {
+    head.innerHTML = `<tr>
+      ${this.activeFields.map(f => {
+        const label = this.schema?.[f]?.label || f.replace(/_/g, " ").toUpperCase();
+        return `<th class="p-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+          <div class="flex items-center gap-1 cursor-pointer group/sort" onclick="app.toggleSort()">
+            ${this.escapeHTML(label)}
+            <span class="text-blue-500 opacity-50 group-hover/sort:opacity-100 transition-opacity">
+              ${this.tableSortDesc ? "↓" : "↑"}
+            </span>
+          </div>
+        </th>`;
+      }).join("")}
+      <th class="p-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">ACTIONS</th>
+    </tr>`;
+  }
+
+  // Render Body
+  if (body) {
+    body.innerHTML = pageRows.map(row => {
+      const isLocked = this.processingRows?.has(String(row.id));
+      return `
+        <tr id="row-${row.id}" ${isLocked ? 'style="opacity:0.4; pointer-events:none;"' : ''} 
+            class="hover:bg-blue-50/50 border-b border-slate-100 transition-colors group">
+          ${this.activeFields.map((f, i) => {
+            let val = row[f] ?? "-";
+            if ((f.toLowerCase().includes("harga") || f.toLowerCase().includes("biaya")) && val !== "-") {
+              val = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(val);
+            }
+            return `<td class="p-6 font-medium text-slate-600 text-sm truncate max-w-[200px]">
+              ${i === 0 && isLocked ? '<i class="fa-solid fa-spinner fa-spin mr-2"></i>' : ''}${this.escapeHTML(String(val))}
+            </td>`;
+          }).join("")}
+          <td class="p-6 text-right space-x-2 whitespace-nowrap">
+            ${this.modes.can_edit ? `<button data-id="${row.id}" onclick="app.handleEdit(this)" class="p-2.5 text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-600 hover:text-white transition-all active:scale-90"><i class="fa-solid fa-pen-to-square"></i></button>` : ""}
+            ${(viewMode === "active" && this.modes.can_delete) ? `<button onclick="app.remove('${this.currentTable}','${row.id}')" class="p-2.5 text-red-600 bg-red-50 rounded-xl hover:bg-red-600 hover:text-white transition-all active:scale-90"><i class="fa-solid fa-trash-can"></i></button>` : ""}
+          </td>
+        </tr>`;
+    }).join("");
+  }
+
+  this.renderPaginationControls();
+},
+
+notifyDataChange() {
+  this._dataVersion = (this._dataVersion || 0) + 1;
+  console.log(`[CORE] Data Version Bumped: ${this._dataVersion}`);
+},
+
+async openForm(data = null) {
+  this.editingId = data ? data.id : null;
+  const modal = document.getElementById("f-modal");
+  const container = document.getElementById("f-fields");
+  if (!modal || !container) return;
+
+  // 1. UI Setup
+  document.getElementById("modal-title").innerText = this.editingId
+    ? `EDIT ${this.currentTable.toUpperCase()}`
+    : `NEW ${this.currentTable.toUpperCase()}`;
+  modal.classList.replace("hidden", "flex");
+
+  // 2. Governance Setup
+  const currentGov = this.modes || {};
+  const fieldPolicy = currentGov.field_policy || null;
+
+  // 3. Field Filtering
+  let fields = this.activeFields?.length > 0 ? this.activeFields : Object.keys(this.schema || {});
+  fields = fields.filter(f => ![
+    "id", "created_at", "created_by", "deleted_at",
+    "is_deleted", "salt", "password"
+  ].includes(f));
+
+  let html = "";
+  for (const f of fields) {
+    const s = this.schema?.[f] || { type: "TEXT", label: f.replace(/_/g, " ").toUpperCase(), required: false };
+    if (s.hidden) continue;
+
+    const val = data ? data[f] ?? "" : "";
+
+    // 🛡️ LOGIKA FIELD LEVEL SECURITY (FLS)
+    const isLockedBySystem = String(s.disabled).toLowerCase() === "true" || ["AUTOFILL", "FORMULA"].includes(s.type);
+    let isLockedByPolicy = fieldPolicy && Array.isArray(fieldPolicy) ? !fieldPolicy.includes(f.toLowerCase()) : false;
+
+    const isLocked = isLockedBySystem || isLockedByPolicy;
+    const isRequired = s.required === true;
+    const lockClass = isLocked ? "bg-slate-100 text-slate-400 border-dashed cursor-not-allowed" : "bg-slate-50 text-slate-700";
+    const labelHtml = this.escapeHTML(s.label || f.replace(/_/g, " "));
+
+    html += `
+      <div class="mb-4 text-left">
+        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">
+          ${labelHtml}${isRequired && !isLocked ? '<span class="text-red-500 ml-1">*</span>' : ""}
+          ${isLockedByPolicy ? '<i class="fa-solid fa-lock ml-1 text-[8px]" title="Restricted by Policy"></i>' : ''}
+        </label>`;
+
+    if (s.type === "LOOKUP" && s.lookup) {
+      html += `
+        <select id="f-${f}" name="${f}" ${isRequired ? "required" : ""} ${isLocked ? "disabled" : ""}
+          onchange="app.triggerLookup('${f}', this.value)" 
+          class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">
+        </select>`;
+    } else {
+      const inputType = (s.type === "NUMBER" || s.type === "CURRENCY") ? "number" : s.type === "DATE" ? "date" : "text";
+      html += `
+        <input id="f-${f}" name="${f}" type="${inputType}" value="${this.escapeHTML(String(val))}" 
+          ${isLocked ? "disabled" : ""} ${isRequired ? "required" : ""} 
+          oninput="app.runLiveFormula()" 
+          class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">`;
+    }
+
+    // Shield: Hidden input agar data readonly tetap terikut saat serialisasi form
+    if (isLocked) {
+      html += `<input type="hidden" name="${f}" value="${this.escapeHTML(String(val))}">`;
+    }
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+
+  // 4. Populate Lookups
+  for (const f of fields) {
+    const s = this.schema?.[f];
+    if (s?.type === "LOOKUP") {
+      await this.populateLookup(f, s.lookup.table, s.lookup.field, data ? data[f] : "");
+    }
+  }
+
+  this.runLiveFormula();
+
+  // 5. ⌨️ KEYBOARD GOVERNANCE (Anti-Double Commit)
+  if (this._formKeyHandler) {
+    document.removeEventListener("keydown", this._formKeyHandler);
+  }
+
+  this._formKeyHandler = (e) => {
+    // Escape = Close
+    if (e.key === "Escape") {
+      this.closeForm();
+    }
+    // Enter = Commit (Hanya jika bukan di textarea)
+    if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") {
+      // Jika Ctrl+Enter atau Cmd+Enter, paksa submit walaupun di textarea
+      if (e.ctrlKey || e.metaKey || e.target.tagName !== "TEXTAREA") {
+        e.preventDefault();
+        document.getElementById("btn-commit")?.click();
+      }
+    }
+  };
+
+  document.addEventListener("keydown", this._formKeyHandler);
+},
+
+/**
+ * SAVE ENGINE - JURAGAN SAAS SHEET
+ * Karakteristik: Optimistic UI, Rollback Safety, & Explicit ID Syncing.
+ */
 async save() {
+  // 🛡️ SUBMISSION GUARD
   if (this.isSubmitting) return;
 
   const btnSave = document.getElementById("btn-commit");
   const form = document.getElementById("f-fields");
+  if (!form) return;
 
   // ======================================================
-  // 1. VALIDASI FE (FAIL FAST)
+  // 1. FAIL-FAST VALIDATION (UX FIRST)
   // ======================================================
   const requiredInputs = form.querySelectorAll("[required]");
   const invalidFields = [];
-
+  
   requiredInputs.forEach(input => {
-    if (!input.value || !input.value.trim()) {
-      const label = (this.schema && this.schema[input.name]?.label) || input.name;
+    const isEmpty = !input.value || !input.value.trim();
+    // Visual Feedback
+    input.classList.toggle("border-red-500", isEmpty);
+    input.classList.toggle("bg-red-50", isEmpty);
+    
+    if (isEmpty) {
+      const label = this.schema?.[input.name]?.label || input.name;
       invalidFields.push(label.toUpperCase());
-      input.classList.add("border-red-500", "bg-red-50");
-    } else {
-      input.classList.remove("border-red-500", "bg-red-50");
     }
   });
 
@@ -669,33 +709,24 @@ async save() {
   }
 
   // ======================================================
-  // 2. COLLECT DATA
+  // 2. DATA COLLECTION & PREPARATION
   // ======================================================
   const inputs = form.querySelectorAll("input, select, textarea");
   const data = {};
-  inputs.forEach(el => {
-    if (el.name) data[el.name] = el.value;
-  });
+  inputs.forEach(el => { if (el.name) data[el.name] = el.value; });
 
   const action = this.editingId ? "update" : "create";
-  const optimisticId = action === "create"
-    ? "tmp-" + Date.now()
-    : this.editingId;
+  const optimisticId = action === "create" ? `tmp-${Date.now()}` : this.editingId;
+  let realServerId = null; // 🔥 Patch #2: Explicit ID tracking
 
-  // Snapshot untuk rollback
-  const originalRow = action === "update"
-    ? this.resourceCache[this.currentTable]?.find(
-        r => String(r.id) === String(this.editingId)
-      )
-    : null;
-
+  // Snapshot original data untuk keperluan rollback
+  const originalRow = this.resourceCache[this.currentTable]?.find(
+    r => String(r.id) === String(this.editingId)
+  );
   const originalData = originalRow ? { ...originalRow } : null;
-  let resultJson = null;
 
   try {
-    // ======================================================
-    // 3. LOCK UI
-    // ======================================================
+    // LOCK UI
     this.isSubmitting = true;
     if (btnSave) {
       btnSave.disabled = true;
@@ -703,46 +734,47 @@ async save() {
     }
 
     // ======================================================
-    // 4. ⚡ OPTIMISTIC UI
+    // 3. ⚡ OPTIMISTIC UI + CACHE INVALIDATION
     // ======================================================
     if (!this.resourceCache[this.currentTable]) {
       this.resourceCache[this.currentTable] = [];
     }
 
     if (action === "create") {
-      this.pagination.currentPage = 1;
-      const newRow = {
+      this.pagination.currentPage = 1; // Reset view ke hal 1 untuk data baru
+      this.resourceCache[this.currentTable].unshift({
         id: optimisticId,
         ...data,
         created_at: new Date().toISOString()
-      };
-      this.resourceCache[this.currentTable].unshift(newRow);
+      });
     } else {
-      const list = this.resourceCache[this.currentTable];
-      const idx = list.findIndex(
+      const idx = this.resourceCache[this.currentTable].findIndex(
         r => String(r.id) === String(this.editingId)
       );
       if (idx !== -1) {
-        list[idx] = { ...list[idx], ...data };
+        this.resourceCache[this.currentTable][idx] = { 
+          ...this.resourceCache[this.currentTable][idx], 
+          ...data 
+        };
       }
     }
 
+    // 🔥 ATOMIC STATE UPDATE
+    this.notifyDataChange(); // Invalidate Search & Sort Cache
     this.renderTable(this.resourceCache[this.currentTable]);
-    setTimeout(() => this.lockRow(optimisticId), 10);
+    this.lockRow(optimisticId);
     this.closeForm();
 
     // ======================================================
-    // 5. SEND TO BE (STRICT CONTRACT)
+    // 4. NETWORK CALL (STRICT BE CONTRACT)
     // ======================================================
     const payload = {
-      action: action,
+      action,
       table: this.currentTable,
       token: this.token || localStorage.getItem("sk_token"),
       sheet: localStorage.getItem("sk_sheet"),
-      ua: navigator.userAgent, // 🔴 KRUSIAL
-      data: action === "update"
-        ? { ...data, id: this.editingId }
-        : data
+      ua: navigator.userAgent,
+      data: action === "update" ? { ...data, id: this.editingId } : data
     };
 
     const response = await fetch(DYNAMIC_ENGINE_URL, {
@@ -751,37 +783,37 @@ async save() {
       body: JSON.stringify(payload)
     });
 
-    const resultText = await response.text();
-    resultJson = JSON.parse(resultText);
+    const result = JSON.parse(await response.text());
+
+    if (!result?.success) throw new Error(result?.message || "SERVER_ERROR");
 
     // ======================================================
-    // 6. SYNC SUCCESS
+    // 5. 🔄 SYNC SUCCESS (ID RE-SYNC)
     // ======================================================
-    if (!resultJson || !resultJson.success) {
-      throw new Error(resultJson?.message || "UNAUTHORIZED_OR_FAILED");
-    }
-
-    if (action === "create" && resultJson.id) {
-      const row = this.resourceCache[this.currentTable]
-        .find(r => r.id === optimisticId);
-      if (row) row.id = resultJson.id;
+    if (action === "create" && result.id) {
+      const row = this.resourceCache[this.currentTable].find(r => r.id === optimisticId);
+      if (row) {
+        row.id = result.id;
+        realServerId = result.id; // 🔥 Simpan ID permanen
+        this.lockRow(realServerId); // 🔥 Pindahkan lock ke ID baru
+      }
     }
 
     this.notify("✅ Data tersimpan!", "success");
 
   } catch (err) {
     // ======================================================
-    // 7. 🔄 ROLLBACK (FAIL-CLOSED)
+    // 6. 🔄 ROLLBACK (FAIL-CLOSED)
     // ======================================================
     console.error("🔥 SAVE_ERROR:", err);
 
     if (action === "create") {
-      this.resourceCache[this.currentTable] =
-        this.resourceCache[this.currentTable]
-          .filter(r => r.id !== optimisticId);
+      this.resourceCache[this.currentTable] = this.resourceCache[this.currentTable]
+        .filter(r => r.id !== optimisticId);
     } else if (originalData) {
-      const idx = this.resourceCache[this.currentTable]
-        .findIndex(r => String(r.id) === String(this.editingId));
+      const idx = this.resourceCache[this.currentTable].findIndex(
+        r => String(r.id) === String(this.editingId)
+      );
       if (idx !== -1) {
         this.resourceCache[this.currentTable][idx] = originalData;
       }
@@ -791,21 +823,24 @@ async save() {
 
   } finally {
     // ======================================================
-    // 8. CLEANUP
+    // 7. FINAL CLEANUP & ATOMIC RENDER
     // ======================================================
+    
+    // Unlock target secara spesifik (ID Sementara & ID Baru)
     this.unlockRow(optimisticId);
-    if (resultJson?.id) this.unlockRow(resultJson.id);
+    if (realServerId) this.unlockRow(realServerId);
 
+    // Final Sync: Pastikan tabel menampilkan versi data paling mutakhir
+    this.notifyDataChange();
     this.renderTable(this.resourceCache[this.currentTable]);
+    
     this.isSubmitting = false;
-
     if (btnSave) {
       btnSave.disabled = false;
       btnSave.innerText = "COMMIT DATA";
     }
   }
 },
-
 
 });
 
