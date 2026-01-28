@@ -996,6 +996,7 @@ async loadPermissions() {
   // ======================================================
   // MAPPING PERMISSION BERDASARKAN ROLE
   // ======================================================
+  console.log(res);
   res.rows.forEach((p) => {
     if (!p.resource || !p.role) return;
     
@@ -1151,21 +1152,32 @@ async selectResource(resourceKey) {
   this.syncSidebarUI(resourceKey, requestId);
 
   // 7. PERMISSION HANDLING (Optimistic)
-  this.applyPermissions({ add: false, edit: false, delete: false, policy: "DENY" });
-  
-  const cachedPerm = this.permissions?.[resourceKey];
-  if (cachedPerm) {
-    this.applyPermissions(cachedPerm);
-  } else {
-    this._permPromise ??= this.loadPermissions(); 
-    this._permPromise.then(() => {
-      if (this.lastRequestId === requestId) {
-        const p = this.permissions?.[resourceKey];
-        if (p) this.applyPermissions(p);
-      }
-      this._permPromise = null; 
-    });
-  }
+  // this.applyPermissions({ add: false, edit: false, delete: false, policy: "DENY" });
+ // 7. PERMISSION HANDLING (CACHE-FIRST, NO FLICKER)
+const cachedPerm = this.permissions?.[resourceKey];
+
+if (cachedPerm) {
+  // 🔥 Instant — tidak ada deny dulu
+  this.applyPermissions(cachedPerm);
+} else {
+  // ⛔ Hanya jika benar-benar belum ada
+  this.applyPermissions({
+    browse: true,
+    add: false,
+    edit: false,
+    delete: false,
+    policy: "DENY"
+  });
+
+  // Load permission SEKALI (biasanya saat first login)
+  this.loadPermissions().then(() => {
+    const p = this.permissions?.[resourceKey];
+    if (p && this.lastRequestId === requestId) {
+      this.applyPermissions(p);
+    }
+  });
+}
+
 
   // 8. DATA LOADING ENGINE (Cache First + Silent Refresh)
   if (this.resourceCache?.[resourceKey] && this.resourceCache[resourceKey].length > 0) {

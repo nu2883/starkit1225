@@ -14,6 +14,10 @@ const auth = {
     const token = localStorage.getItem('sk_token');
     this.targetEngine = localStorage.getItem('sk_engine_url');
 
+    // --- 🚀 SYNC BRANDING AWAL ---
+    // Pastikan nama aplikasi di Tab & Navbar langsung berubah saat web dibuka
+    this.applyBranding();
+
     // Tambahkan Event Listener Keyboard secara global untuk kenyamanan user
     this.setupKeyboardListeners();
 
@@ -49,10 +53,25 @@ const auth = {
     document.getElementById('serial-input').focus(); // Auto-focus biar bisa langsung ngetik
   },
 
-  showLogin() {
+showLogin() {
+    // 1. Ambil Nama Aplikasi yang sudah disimpan saat verifikasi serial
+    const savedName = localStorage.getItem('sk_app_name') || ' ';
+    
+    // 2. Tampilkan nama tersebut ke elemen UI (ID: display-app-name)
+    const displayEl = document.getElementById('display-app-name');
+    if (displayEl) {
+      displayEl.innerText = savedName;
+    }
+
+    // 3. Kelola visibilitas box
     document.getElementById('login-box').classList.remove('hidden');
     document.getElementById('serial-box').classList.add('hidden');
-    document.getElementById('login-email').focus(); // Auto-focus
+    
+    // 4. Berikan pengalaman user yang smooth (Auto-focus)
+    const emailInput = document.getElementById('login-email');
+    if (emailInput) emailInput.focus();
+
+    
   },
 
   msg(text) {
@@ -67,7 +86,7 @@ const auth = {
     }
   },
 
-  async verifySerial() {
+async verifySerial() {
     const input = document.getElementById('serial-input');
     const serial = input.value.trim();
     
@@ -84,12 +103,23 @@ const auth = {
       const data = await res.json();
 
       if (data.ok && data.sheet && data.engine_url) {
+        // --- PROSES SIMPAN IDENTITAS ---
         localStorage.setItem('sk_serial', serial);
         localStorage.setItem('sk_sheet', data.sheet); 
         localStorage.setItem('sk_engine_url', data.engine_url);
         
+        // Simpan App Name dari BE (Jika kosong gunakan default)
+        const finalAppName = data.appName || 'Starkit';
+        localStorage.setItem('sk_app_name', finalAppName);
+        
+        // --- UPDATE UI IDENTITY ---
         this.targetEngine = data.engine_url;
         this.msg('Lisensi Aktif & Engine Terhubung!');
+        
+        // Opsional: Langsung ubah judul aplikasi di layar
+        const titleEl = document.getElementById('app-display-name');
+        if (titleEl) titleEl.innerText = finalAppName;
+
         setTimeout(() => this.showLogin(), 800);
       } else {
         this.msg(data.message || 'Serial tidak valid / Expired');
@@ -164,7 +194,32 @@ const auth = {
     localStorage.removeItem('sk_role');
     localStorage.removeItem('sk_email');
     location.reload();
+  },
+  
+  /**
+ * FUNGSI SINKRONISASI BRANDING
+ * Mengambil Nama Aplikasi dari LocalStorage dan menerapkannya ke UI
+ */
+applyBranding() {
+  const savedName = localStorage.getItem('sk_app_name') || 'STARKIT';
+  
+  // 1. Ubah Title Browser (Tab)
+  document.title = savedName.toUpperCase();
+
+  // 2. Ubah Nama di Navbar
+  const navName = document.getElementById('nav-app-name');
+  if (navName) {
+    navName.innerText = savedName.toUpperCase();
   }
+
+  // 3. Ubah Nama di Login Screen (jika ada)
+  const displayEl = document.getElementById('display-app-name');
+  if (displayEl) {
+    displayEl.innerText = savedName.toUpperCase();
+  }
+}
+
+
 };
 
 window.addEventListener('load', () => auth.init());

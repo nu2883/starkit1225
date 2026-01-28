@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>STARKIT</title>
+    <title id="app-window-title">STARKIT</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       rel="stylesheet"
@@ -102,9 +102,9 @@
           >
             <i class="fa-solid fa-bolt"></i>
           </div>
-          <span class="text-white font-black text-xl tracking-tighter"
-            >STARKIT</span
-          >
+<span id="nav-app-name" class="text-white font-black text-xl tracking-tighter">
+  STARKIT
+</span>
           <!-- Close button for mobile -->
           <button
             onclick="app.closeMobileSidebar()"
@@ -443,82 +443,75 @@
         </div>
       </main>
 
-      <!-- Login Screen -->
-      <div
-        id="login-screen"
-        class="fixed inset-0 bg-slate-900 flex items-center justify-center z-[100] p-4"
-      >
-        <div
-          class="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center"
-        >
-        <br>
-          <!-- <div
-            class="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/40"
-          >
-            <i class="fa-solid fa-shuttle-space text-white text-2xl"></i>
-          </div>
-          <h1 class="text-3xl font-black text-slate-900 tracking-tight">
-            STARKIT
-          </h1>
-          <p
-            class="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1 mb-8"
-          >
-            SaaS Engine
-          </p> -->
+<div id="login-screen" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-[100] p-4 font-sans">
+  <div class="bg-white p-8 md:p-12 rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] w-full max-w-md text-center border border-slate-100">
 
-          <div class="space-y-4">
-            <div id="serial-box" class="space-y-4 hidden">
-              <input
-                id="serial-input"
-                type="text"
-                placeholder="Serial Number"
-                class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-              />
-              <button
-                onclick="auth.verifySerial()"
-                class="w-full bg-blue-600 text-white p-4 rounded-2xl font-black hover:bg-blue-700 transition-all uppercase text-xs tracking-widest"
-              >
-                Verifikasi Lisensi
-              </button>
-            </div>
 
-            <div id="login-box" class="space-y-4 hidden">
-              <input
-                id="login-email"
-                type="email"
-                placeholder="Email Anda"
-                class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-              />
-              <input
-                id="login-pass"
-                type="password"
-                onkeyup="auth.handleKeyPress(event)"
-                placeholder="Password"
-                class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 font-bold"
-              />
-              <button
-                id="btn-login-action"
-                onclick="auth.login()"
-                class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all"
-              >
-                AUTHORIZE
-              </button>
-
-              <button
-                onclick="auth.resetSerial()"
-                class="w-full text-[10px] text-red-500 font-black uppercase tracking-widest mt-2"
-              >
-                Ganti Serial Number
-              </button>
-            </div>
-
-            <p
-              id="login-msg"
-              class="text-center text-xs font-bold text-red-500 mt-4 hidden"
-            ></p>
-          </div>
+    <div class="space-y-6">
+      <div id="serial-box" class="space-y-4 hidden">
+        <div class="mb-6">
+          <h2 class="text-2xl font-black text-slate-900 tracking-tight">AKTIVASI LISENSI</h2>
+          <p class="text-xs text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Masukkan Serial Number Anda</p>
         </div>
+        <input
+          id="serial-input"
+          type="text"
+          placeholder="XXXX-XXXX-XXXX"
+          class="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-mono font-bold text-center text-lg transition-all"
+        />
+        <button
+          onclick="auth.verifySerial()"
+          class="w-full bg-blue-600 text-white p-5 rounded-3xl font-black hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-200 transition-all uppercase text-xs tracking-widest active:scale-95"
+        >
+          Verifikasi Mesin <i class="fa-solid fa-arrow-right ml-2"></i>
+        </button>
       </div>
+
+      <div id="login-box" class="space-y-5 hidden animate-fade-in">
+        <div class="text-center mb-8">
+          <h2 id="display-app-name" class="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-tight">
+            NAMA APLIKASI
+          </h2>
+          <div class="h-1 w-12 bg-blue-600 mx-auto my-2 rounded-full"></div>
+          <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.3em]">Authorized Access Only</p>
+        </div>
+
+        <div class="space-y-3">
+          <input
+            id="login-email"
+            type="email"
+            placeholder="Email Address"
+            class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-slate-900 transition-all font-bold"
+          />
+          <input
+            id="login-pass"
+            type="password"
+            onkeyup="auth.handleKeyPress(event)"
+            placeholder="Secure Password"
+            class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-slate-900 transition-all font-bold"
+          />
+        </div>
+
+        <button
+          id="btn-login-action"
+          onclick="auth.login()"
+          class="w-full bg-slate-900 text-white p-5 rounded-2xl font-black hover:bg-black hover:shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"
+        >
+          AUTHORIZE SYSTEM <i class="fa-solid fa-key text-xs opacity-50"></i>
+        </button>
+
+        <button
+          onclick="auth.resetSerial()"
+          class="w-full text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-4 hover:text-red-500 transition-colors"
+        >
+          <i class="fa-solid fa-rotate-left mr-1"></i> Ganti Serial Number
+        </button>
+      </div>
+
+      <p id="login-msg" class="text-center text-[11px] font-black text-red-500 mt-4 hidden uppercase tracking-wider bg-red-50 p-3 rounded-xl border border-red-100"></p>
+    </div>
+  </div>
+</div>
 
       <!-- Form Modal -->
       <div
@@ -569,6 +562,11 @@
     <script src="row_policy.js"></script>
 
     <script>
+      /**
+ * FUNGSI SINKRONISASI BRANDING
+ * Mengambil Nama Aplikasi dari LocalStorage dan menerapkannya ke UI
+ */
+
       document.addEventListener("DOMContentLoaded", function () {
         auth.init();
         initMobileSidebarListeners();
