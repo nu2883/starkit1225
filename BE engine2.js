@@ -172,6 +172,12 @@ function doPost(e) {
       case "save_dashboard":
         // Pastikan variabel 'requestData' yang dioper ke sini
         result = handleDashboardSave(requestData);
+      
+      case "load_dashboard":
+      return out(loadDashboardConfig(auth.user, SS));
+      case "save_dashboard":
+      return out(handleDashboardSave(p));
+
         
       case "create":
         return out(handleWrite("create", p.table, p.data, auth.user, SS));
@@ -192,6 +198,69 @@ function doPost(e) {
     return out({ success: false, message: "REQ_ERR: " + err.toString() });
   }
 }
+
+function loadDashboardConfig(user, SS) {
+  const sheet = SS.getSheetByName("config_dashboard");
+  if (!sheet) return { success: true, data: [] };
+
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return { success: true, data: [] };
+
+  const headers = rows[0].map(h => String(h).toLowerCase());
+
+  // ambil row data valid (yang punya config_json array)
+  const records = rows.slice(1)
+    .map(r => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = r[i]);
+      return obj;
+    })
+    .filter(r =>
+      typeof r.config_json === "string" &&
+      r.config_json.trim().startsWith("[")
+    );
+
+  if (records.length === 0) {
+    return { success: true, data: [] };
+  }
+
+  // 🔥 AMBIL YANG TERBARU
+  records.sort(
+    (a, b) =>
+      new Date(b.updated_at || b.created_at || 0) -
+      new Date(a.updated_at || a.created_at || 0)
+  );
+
+  const latest = records[0];
+
+  let widgets;
+  try {
+    widgets = JSON.parse(latest.config_json);
+  } catch (e) {
+    return { success: false, message: "Invalid dashboard JSON" };
+  }
+
+  // 🔐 ROLE FILTER (DEFENSIVE)
+  widgets = widgets.filter(w => {
+    if (!w.allowed_role || w.allowed_role === "all") return true;
+    return String(w.allowed_role)
+      .split(",")
+      .map(r => r.trim())
+      .includes(user.role);
+  });
+
+  return {
+    success: true,
+    data: widgets,
+    meta: {
+      dashboard_id: latest.id,
+      updated_at: latest.updated_at || latest.created_at
+    }
+  };
+}
+
+
+
 // ================== MAIN GET HANDLER ==================
 function doGet(e) {
   try {

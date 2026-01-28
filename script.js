@@ -811,7 +811,7 @@ async init() {
   /* =====================================================
    * 4️⃣ LOAD DASHBOARD CONFIG (SETELAH DATA SIAP)
    * ===================================================== */
-  await this.loadDashboardConfig();
+  this.loadDashboardConfig();
 
   
 
