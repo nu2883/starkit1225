@@ -127,69 +127,62 @@ function doPost(e) {
     const SS = getDynamicSS(p.sheet);
     if (!SS) return out({ success: false, message: "SS_MISSING" });
 
-    // 1. LOGIN (Tanpa Log Traffic berlebih)
+    // 1. LOGIN
     if (p.action === "login") return out(handleLogin(p, SS));
 
     // 2. VERIFIKASI TOKEN
     const auth = verifyToken(p.token, p.ua);
     if (!auth.valid) return out({ success: false, message: "401_UNAUTHORIZED" });
 
-    // 3. CAPTURE SERIAL
     const serial = p.serial || (auth.user ? auth.user.serial : '') || '';
 
     // 4. RECORD LOG
     bufferEngineLog(auth.user.email, serial, 1, `POST:${p.action}`);
 
     // 5. ACTION SWITCH
-    // Pastikan p.action dievaluasi dengan benar
     switch (p.action) {
       
-      // 🛡️ ACTION BARU UNTUK ROW POLICY
       case "create_row_policy":
         if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN_NOT_ADMIN" });
         return out(createRowPolicy(p.data, SS));
       
       case "delete":
-        // 🛡️ Filter Keamanan: Hanya Admin yang boleh hapus di tabel config
         if (p.table === "config_permissions" || p.table === "config_row_policies") {
-          if (auth.user.role !== 'admin') {
-            return out({ success: false, message: "FORBIDDEN_NOT_ADMIN" });
-          }
-          
-          // Mengambil ID dengan cerdas dari berbagai kemungkinan kiriman FE
+          if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN_NOT_ADMIN" });
           const targetId = p.id || (p.data ? p.data.id : null);
-          
-          // Memanggil eksekutor dengan membawa nama tabel agar tidak salah hapus sheet
           return out(deleteRowPolicy(targetId, SS, p.table)); 
         }
-
-        // 🛡️ Untuk tabel transaksi/master data biasa, gunakan handleWrite
         return out(handleWrite("delete", p.table, p.data, auth.user, SS));
 
-      // ⚙️ ACTION BAWAAN VOYAGER
       case "migrate":
         return out(migrateNewTable(p.data, auth.user, SS));
-      case "save_dashboard":
-        // Pastikan variabel 'requestData' yang dioper ke sini
-        result = handleDashboardSave(requestData);
-      
-      case "load_dashboard":
-      return out(loadDashboardConfig(auth.user, SS));
-      case "save_dashboard":
-      return out(handleDashboardSave(p));
 
-        
+      case "load_dashboard":
+        return out(loadDashboardConfig(auth.user, SS));
+
+      case "save_dashboard":
+        return out(handleDashboardSave(p));
+
+      // 🔥 PERBAIKAN KRUSIAL UNTUK CREATE & UPDATE
       case "create":
-        return out(handleWrite("create", p.table, p.data, auth.user, SS));
       case "update":
-        return out(handleWrite("update", p.table, p.data, auth.user, SS));
+        // Jalankan penulisan data
+        let result = handleWrite(p.action, p.table, p.data, auth.user, SS);
+        
+        // Jika sukses dan FE meminta data terbaru untuk sinkronisasi
+        if (result.success && p.fetchLatest) {
+          const targetSheet = SS.getSheetByName(p.table);
+          // Ambil 20 data terbaru secara global (agar Diego masuk)
+          result.latestData = getLatestForReconciliation(targetSheet, p.fetchLatest);
+        }
+        return out(result);
+
       case "flush_logs":
         if (auth.user.role !== 'admin') return out({ success: false, message: "FORBIDDEN" });
         flushEngineLogs();
         return out({ success: true });
 
       default:
-        // Jika sampai sini, berarti action p.action tidak ada yang cocok
         console.error("Action tidak dikenal: " + p.action);
         return out({ success: false, message: "ACTION_UNKNOWN: " + p.action });
     }
@@ -197,6 +190,87 @@ function doPost(e) {
     console.error('doPost error', err);
     return out({ success: false, message: "REQ_ERR: " + err.toString() });
   }
+}
+
+/**
+ * 🔥 FUNGSI PENYELAMAT SINKRONISASI (BE)
+ * Mengambil data terbaru tanpa filter user agar Diego (staff@) bisa terbaca oleh Klien
+ */
+function getLatestForReconciliation(sheet, limit) {
+  if (!sheet) return [];
+  
+  // Paksa Google menulis perubahan ke disk agar data user lain terbaca
+  SpreadsheetApp.flush(); 
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+
+  // Ambil buffer 50 baris terakhir untuk disortir (lebih efisien untuk 1000 users)
+  const bufferSize = Math.min(lastRow - 1, 50); 
+  const startRow = lastRow - bufferSize + 1;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = sheet.getRange(startRow, 1, bufferSize, sheet.getLastColumn()).getValues();
+
+  // Mapping ke JSON Array
+  const json = data.map(row => {
+    let obj = {};
+    headers.forEach((h, i) => {
+      // Pastikan handle tipe data Date agar tidak error saat JSON.stringify
+      let val = row[i];
+      if (val instanceof Date) val = val.toISOString();
+      obj[h] = val;
+    });
+    return obj;
+  });
+
+  // Urutkan berdasarkan updated_at DESC
+  return json.sort((a, b) => {
+    const ta = Date.parse(a.updated_at || a.created_at || 0);
+    const tb = Date.parse(b.updated_at || b.created_at || 0);
+    return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+  }).slice(0, limit);
+}
+
+/**
+ * Helper untuk output JSON
+ */
+function out(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Mengambil data terbaru untuk rekonsiliasi FE
+ * Diego akan muncul di sini karena kita tidak mem-filter berdasarkan user
+ */
+function getLatestForReconciliation(sheet, limit) {
+  if (!sheet) return [];
+  
+  // 🔥 PAKSA UPDATE: Agar data dari user lain (Diego) masuk ke pembacaan script ini
+  SpreadsheetApp.flush(); 
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+
+  // Ambil buffer 50 baris terakhir (agar aman saat sortir timestamp)
+  const fetchAmount = Math.min(lastRow - 1, 50); 
+  const startRow = lastRow - fetchAmount + 1;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const data = sheet.getRange(startRow, 1, fetchAmount, sheet.getLastColumn()).getValues();
+
+  // Mapping ke JSON
+  const json = data.map(row => {
+    let obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+
+  // Sortir berdasarkan updated_at/created_at terbaru
+  return json.sort((a, b) => {
+    const ta = Date.parse(a.updated_at || a.created_at || 0);
+    const tb = Date.parse(b.updated_at || b.created_at || 0);
+    return tb - ta;
+  }).slice(0, limit); // Ambil hanya 20 sesuai permintaan FE
 }
 
 function loadDashboardConfig(user, SS) {

@@ -87,12 +87,25 @@ async saveDashboardConfig() {
  * Cache           : LocalStorage
  * =====================================================
  */
+/**
+ * =====================================================
+ * 📊 LOAD DASHBOARD CONFIG (HYBRID + ROLE AWARE)
+ * Source of Truth : BACKEND
+ * Cache           : LocalStorage
+ * Feature         : Admin God-Mode (Load All Data)
+ * =====================================================
+ */
+/**
+ * 📊 LOAD DASHBOARD CONFIG (WITH DEEP FORENSIC LOGGING)
+ * Memastikan data backend masuk ke dashboardConfig (untuk view) 
+ * dan dashboardConfigs (untuk builder).
+ */
 async loadDashboardConfig() {
   let finalConfig = [];
-  const role = localStorage.getItem("sk_role") || "guest";
+  const role = (localStorage.getItem("sk_role") || "guest").toLowerCase();
 
-  console.group("📊 [DASHBOARD] LOAD CONFIG");
-  console.log("👤 Active Role:", role);
+  console.group("🚀 [DASHBOARD SYSTEM] START LOADING");
+  console.log("👤 CURRENT ROLE:", role);
 
   /* =====================================================
    * 1️⃣ LOAD DARI LOCAL STORAGE (FAST FALLBACK)
@@ -103,111 +116,92 @@ async loadDashboardConfig() {
       const parsed = JSON.parse(localRaw);
       if (Array.isArray(parsed)) {
         finalConfig = parsed;
-        console.log("💾 [LOCAL] Loaded:", parsed.length, "widgets");
-      } else {
-        console.warn("⚠️ [LOCAL] Invalid format, ignored:", parsed);
+        console.log("💾 [LOCAL STORAGE] Found data:", finalConfig.length, "widgets");
       }
-    } else {
-      console.log("ℹ️ [LOCAL] No local backup found");
     }
   } catch (err) {
-    console.warn("🔥 [LOCAL] Corrupted LocalStorage, cleared", err);
-    localStorage.removeItem("sk_dashboard_backup");
+    console.error("🔥 [LOCAL] Error parsing backup:", err);
   }
 
   /* =====================================================
    * 2️⃣ LOAD DARI BACKEND (AUTHORITATIVE)
    * ===================================================== */
   try {
-    console.log("☁️ [DB] Requesting load_dashboard...");
+    console.log("☁️ [BACKEND] Fetching load_dashboard...");
+    const res = await this.post({ action: "load_dashboard" });
 
-    const res = await this.post({
-      action: "load_dashboard"
-    });
+    console.log("📥 [BACKEND] RAW RESPONSE:", res);
 
     if (res?.success && Array.isArray(res.data)) {
       finalConfig = res.data;
+      
+      // LOG DATA SEBELUM FILTER (Sangat Penting!)
+      console.log("📋 [BACKEND] DATA RECEIVED (BEFORE FILTER):");
+      console.table(finalConfig);
 
-      // 🔁 Sync ke LocalStorage
-      localStorage.setItem(
-        "sk_dashboard_backup",
-        JSON.stringify(res.data)
-      );
-
-      console.log(
-        "☁️ [DB] Loaded:",
-        res.data.length,
-        "widgets & synced to LocalStorage"
-      );
+      // Sync ke LocalStorage
+      localStorage.setItem("sk_dashboard_backup", JSON.stringify(res.data));
     } else {
-      console.warn("⚠️ [DB] Invalid response, fallback to local:", res);
+      console.warn("⚠️ [BACKEND] Invalid/Empty data. Using local fallback.");
     }
   } catch (err) {
-    console.error(
-      "🔥 [DB] load_dashboard failed, fallback to local",
-      err
-    );
+    console.error("🔥 [BACKEND] Request failed:", err);
   }
 
   /* =====================================================
-   * 3️⃣ FINAL GUARD
+   * 3️⃣ STATE SYNC (CRITICAL FOR BUILDER)
+   * Kita masukkan data asli sebelum difilter ke state Builder
+   * agar semua widget muncul di Editor (God Mode Builder).
    * ===================================================== */
-  if (!Array.isArray(finalConfig)) {
-    console.warn("⚠️ [FINAL] Config invalid, reset");
-    finalConfig = [];
-  }
+  this.dashboardConfigs = JSON.parse(JSON.stringify(finalConfig));
+  console.log("🛠️ [BUILDER STATE] Injected:", this.dashboardConfigs.length, "widgets");
 
   /* =====================================================
-   * 4️⃣ ROLE FILTERING (UX FILTER – BE SUDAH FILTER)
+   * 4️⃣ ROLE FILTERING (FOR VIEW ONLY)
    * ===================================================== */
-  console.group("🔐 [ROLE FILTER]");
+  console.group("🔐 [VIEW FILTER LOGIC]");
   const beforeCount = finalConfig.length;
 
-  finalConfig = finalConfig.filter((conf, idx) => {
-    const ar = conf.allowed_role;
+  const filteredConfig = finalConfig.filter((conf, idx) => {
+    const ar = (conf.allowed_role || "all").toLowerCase();
     let allowed = false;
 
-    if (!ar || ar === "all") {
+    // 👑 GOD-MODE: Admin bypass everything
+    if (role === "admin") {
       allowed = true;
-    } else if (ar === role) {
+    } 
+    else if (ar === "all") {
+      allowed = true;
+    } 
+    else if (ar === role) {
       allowed = true;
     }
 
     console.log(
-      `#${idx + 1}`,
-      conf.name || "(unnamed)",
-      "| allowed_role =", ar,
-      "| role =", role,
-      "=>",
-      allowed ? "✅ SHOWN" : "❌ HIDDEN"
+      `Widget #${idx + 1} [${conf.name}] | Role Req: ${ar} | Result: ${allowed ? "✅ SHOW" : "❌ HIDE"}`
     );
-
     return allowed;
   });
 
-  console.log(
-    `📉 Filtered: ${beforeCount} → ${finalConfig.length}`
-  );
+  console.log(`📉 View Summary: ${beforeCount} total -> ${filteredConfig.length} shown to user.`);
   console.groupEnd();
 
   /* =====================================================
-   * 5️⃣ STATE INJECTION
+   * 5️⃣ FINAL INJECTION
    * ===================================================== */
-  this.dashboardConfig  = [...finalConfig];
-  this.dashboardConfigs = [...finalConfig];
+  this.dashboardConfig = [...filteredConfig];
 
-  console.log(
-    "✅ [DASHBOARD] Final widgets injected:",
-    finalConfig.length
-  );
+  console.log("✅ [SYSTEM] Dashboard Ready.");
   console.groupEnd();
 
-   this.openDashboard();
+  // Jalankan renderers
+  this.openDashboard(); 
+  if (typeof this.renderDashboardBuilder === "function") {
+    this.renderDashboardBuilder();
+  }
 
   return finalConfig;
-}
-,
-
+},
 
   /**
    * 2. LOAD CONFIG (Mencegah Data Hilang saat Refresh)
@@ -217,6 +211,11 @@ async loadDashboardConfig() {
   /**
    * 3. RENDER DASHBOARD (Dengan Sinkronisasi Data Riil)
    */
+/**
+ * 📊 RENDER DASHBOARD (WITH ADMIN PERMISSION OVERRIDE)
+ * Menampilkan widget berdasarkan config yang sudah difilter di loadDashboardConfig
+ * Ditambah pengaman Level 2: Permission Table & Role Bypass untuk Admin.
+ */
 renderDashboard: function () {
   const container = document.getElementById("dashboard-container");
   if (!container) return;
@@ -296,6 +295,13 @@ renderDashboard: function () {
    * 2️⃣ FILTER DASHBOARD (ROLE + TABLE PERMISSION)
    * ===================================================== */
   const configs = (this.dashboardConfig || []).filter((conf, idx) => {
+    
+    // 👑 GOD-MODE BYPASS: Jika admin, tampilkan tanpa cek permission
+    if (userRole.toLowerCase() === "admin") {
+      console.log(`👑 [${idx + 1}] ADMIN OVERRIDE`, conf.name);
+      return true;
+    }
+
     /* ---------- ROLE CHECK ---------- */
     if (conf.allowed_role && conf.allowed_role !== "all") {
       const allowedRoles = String(conf.allowed_role)
@@ -574,249 +580,265 @@ renderDashboard: function () {
   },
 
 
+/**
+ * 🛠️ RENDER DASHBOARD BUILDER
+ * Fungsi untuk mengelola konfigurasi widget dashboard.
+ * Memastikan data dari backend (this.dashboardConfigs) tersinkronisasi dengan UI.
+ */
 renderDashboardBuilder: function () {
-    const container = document.getElementById("db-builder-container");
-    if (!container) return;
+  const container = document.getElementById("db-builder-container");
+  if (!container) return;
 
-    // Ambil data roles dari cache untuk dropdown
-    const availableRoles = this.resourceCache.roles || [];
+  // 1️⃣ RESOLVE DATA (Sangat Penting untuk Juragan)
+  // Jika dashboardConfigs masih kosong, coba ambil dari dashboardConfig (hasil fetch)
+  if ((!this.dashboardConfigs || this.dashboardConfigs.length === 0) && (this.dashboardConfig && this.dashboardConfig.length > 0)) {
+    this.dashboardConfigs = JSON.parse(JSON.stringify(this.dashboardConfig));
+    console.log("🔄 [BUILDER] Synced from dashboardConfig:", this.dashboardConfigs.length);
+  }
 
-    // Starter jika kosong
-    if (this.dashboardConfigs.length === 0) {
-      this.dashboardConfigs.push({
-        name: "",
-        table: "",
-        type: "COUNT",
-        column: "",
-        vars: [],
-        formula: "",
-        color: "slate",
-        unit: "Rp",
-        icon: "fa-wallet",
-        allowed_role: "all" // Default semua role bisa lihat
-      });
-    }
+  // Ambil data roles dari cache untuk dropdown izin akses
+  const availableRoles = this.resourceCache.roles || [];
 
-    container.innerHTML = this.dashboardConfigs
-      .map((conf, index) => {
-        // 1. Persiapan Data (Cache & Safety)
-        const schema = this.schemaCache[conf.table]?.schema || {};
-        const columnOptions = Object.keys(schema)
-          .map(
-            (col) =>
-              `<option value="${col}" ${
-                conf.column === col ? "selected" : ""
-              }>${col.toUpperCase().replace(/_/g, " ")}</option>`
-          )
-          .join("");
+  // Starter jika benar-benar kosong (Widget Pertama)
+  if (!this.dashboardConfigs || this.dashboardConfigs.length === 0) {
+    this.dashboardConfigs = [{
+      name: "",
+      table: "",
+      type: "COUNT",
+      column: "",
+      vars: [],
+      formula: "",
+      color: "slate",
+      unit: "Rp",
+      icon: "fa-wallet",
+      allowed_role: "all" // Default semua role bisa lihat
+    }];
+    console.log("🆕 [BUILDER] Initialized with empty starter");
+  }
 
-        if (!conf.vars) conf.vars = [];
+  // 2️⃣ MAPPING UI
+  container.innerHTML = this.dashboardConfigs
+    .map((conf, index) => {
+      // Persiapan Data (Cache & Safety)
+      const schema = this.schemaCache[conf.table]?.schema || {};
+      const columnOptions = Object.keys(schema)
+        .map(
+          (col) =>
+            `<option value="${col}" ${
+              conf.column === col ? "selected" : ""
+            }>${col.toUpperCase().replace(/_/g, " ")}</option>`
+        )
+        .join("");
 
-        return `
-      <div class="p-8 bg-white rounded-[3rem] border border-slate-200 mb-8 shadow-sm relative overflow-hidden animate-fade-in">
-        
-        <div class="flex justify-between items-center mb-8">
-          <div class="flex items-center gap-4 w-full">
-            <div class="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-xs shadow-lg">${
-              index + 1
-            }</div>
-            <input type="text" value="${
-              conf.name
-            }" placeholder="Nama Widget (Contoh: Sisa Stok)"
-              onchange="app.updateWidgetConfig(${index}, 'name', this.value)"
-              class="bg-transparent border-none font-black text-slate-800 text-lg outline-none w-2/3 uppercase tracking-tighter">
-          </div>
-          <button onclick="app.deleteWidgetConfig(${index})" class="text-red-300 hover:text-red-500 transition-all p-2">
-            <i class="fa-solid fa-trash-can"></i>
-          </button>
+      if (!conf.vars) conf.vars = [];
+
+      return `
+    <div class="p-8 bg-white rounded-[3rem] border border-slate-200 mb-8 shadow-sm relative overflow-hidden animate-fade-in">
+      
+      <div class="flex justify-between items-center mb-8">
+        <div class="flex items-center gap-4 w-full">
+          <div class="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-xs shadow-lg">${
+            index + 1
+          }</div>
+          <input type="text" value="${
+            conf.name
+          }" placeholder="Nama Widget (Contoh: Sisa Stok)"
+            onchange="app.updateWidgetConfig(${index}, 'name', this.value)"
+            class="bg-transparent border-none font-black text-slate-800 text-lg outline-none w-2/3 uppercase tracking-tighter">
+        </div>
+        <button onclick="app.deleteWidgetConfig(${index})" class="text-red-300 hover:text-red-500 transition-all p-2">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div>
+          <label class="block text-[9px] font-black text-indigo-500 uppercase mb-2 ml-2 tracking-widest">
+            <i class="fa-solid fa-shield-halved mr-1"></i> Izin Akses Role
+          </label>
+          <select onchange="app.updateWidgetConfig(${index}, 'allowed_role', this.value)" 
+            class="w-full p-4 bg-indigo-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-indigo-500/20 text-indigo-700">
+            <option value="all" ${conf.allowed_role === 'all' ? 'selected' : ''}>🌍 SEMUA ROLE</option>
+            ${availableRoles.map(r => {
+              const rName = r.role_name || r.name;
+              return `<option value="${rName}" ${conf.allowed_role === rName ? 'selected' : ''}>🔐 ${rName.toUpperCase()}</option>`;
+            }).join("")}
+          </select>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div>
-            <label class="block text-[9px] font-black text-indigo-500 uppercase mb-2 ml-2 tracking-widest">
-              <i class="fa-solid fa-shield-halved mr-1"></i> Izin Akses Role
-            </label>
-            <select onchange="app.updateWidgetConfig(${index}, 'allowed_role', this.value)" 
-              class="w-full p-4 bg-indigo-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-indigo-500/20 text-indigo-700">
-              <option value="all" ${conf.allowed_role === 'all' ? 'selected' : 'all'}>🌍 SEMUA ROLE</option>
-              ${availableRoles.map(r => {
-                const rName = r.role_name || r.name;
-                return `<option value="${rName}" ${conf.allowed_role === rName ? 'selected' : ''}>🔐 ${rName.toUpperCase()}</option>`;
-              }).join("")}
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Metode Hitung</label>
-            <select onchange="app.updateWidgetConfig(${index}, 'type', this.value); app.renderDashboardBuilder();" 
-              class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20">
-              <option value="COUNT" ${
-                conf.type === "COUNT" ? "selected" : ""
-              }>COUNT (Hitung Baris)</option>
-              <option value="SUM" ${
-                conf.type === "SUM" ? "selected" : ""
-              }>SUM (Total Angka)</option>
-              <option value="FORMULA" ${
-                conf.type === "FORMULA" ? "selected" : ""
-              }>FORMULA (Variabel)</option>
-              <option value="URGENCY" ${
-                conf.type === "URGENCY" ? "selected" : ""
-              }>URGENCY (Stok Kritis)</option>
-            </select>
-          </div>
-
-          ${
-            conf.type !== "FORMULA"
-              ? `
-            <div>
-              <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Sumber Tabel</label>
-              <select onchange="app.updateWidgetTable(${index}, this.value)" 
-                class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20 text-blue-600">
-                <option value="">-- Pilih Tabel --</option>
-                ${this.allResources
-                  .map(
-                    (r) =>
-                      `<option value="${r.id}" ${
-                        conf.table === r.id ? "selected" : ""
-                      }>${r.id.toUpperCase()}</option>`
-                  )
-                  .join("")}
-              </select>
-            </div>
-            <div class="${
-              conf.type === "COUNT" ? "opacity-30 pointer-events-none" : ""
-            }">
-              <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Kolom Target</label>
-              <select onchange="app.updateWidgetConfig(${index}, 'column', this.value)" 
-                class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20">
-                <option value="">-- Pilih Kolom --</option>
-                ${columnOptions}
-              </select>
-            </div>
-          `
-              : `
-            <div class="md:col-span-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center">
-              <p class="text-[10px] font-bold text-blue-600 uppercase tracking-tight">
-                <i class="fa-solid fa-circle-info mr-2"></i> Mode Formula Aktif: Kelola variabel di panel bawah.
-              </p>
-            </div>
-          `
-          }
+        <div>
+          <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Metode Hitung</label>
+          <select onchange="app.updateWidgetConfig(${index}, 'type', this.value); app.renderDashboardBuilder();" 
+            class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20">
+            <option value="COUNT" ${
+              conf.type === "COUNT" ? "selected" : ""
+            }>COUNT (Hitung Baris)</option>
+            <option value="SUM" ${
+              conf.type === "SUM" ? "selected" : ""
+            }>SUM (Total Angka)</option>
+            <option value="FORMULA" ${
+              conf.type === "FORMULA" ? "selected" : ""
+            }>FORMULA (Variabel)</option>
+            <option value="URGENCY" ${
+              conf.type === "URGENCY" ? "selected" : ""
+            }>URGENCY (Stok Kritis)</option>
+          </select>
         </div>
 
         ${
-          conf.type === "FORMULA"
+          conf.type !== "FORMULA"
             ? `
-          <div class="mb-8 p-8 bg-blue-50/50 rounded-[2.5rem] border border-blue-100 animate-slide-up">
-            <div class="flex justify-between items-center mb-6">
-              <h5 class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Kalkulasi Lintas Tabel</h5>
-              <button onclick="app.addVariable(${index})" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase hover:bg-slate-900 transition-all shadow-md">
-                + Tambah Variabel
-              </button>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              ${conf.vars
+          <div>
+            <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Sumber Tabel</label>
+            <select onchange="app.updateWidgetTable(${index}, this.value)" 
+              class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20 text-blue-600">
+              <option value="">-- Pilih Tabel --</option>
+              ${this.allResources
                 .map(
-                  (v, vIdx) => `
-                <div class="bg-white p-4 rounded-2xl border border-blue-100 relative group shadow-sm">
-                  <div class="flex gap-2 mb-2">
-                    <input type="text" value="${
-                      v.code
-                    }" onchange="app.updateVar(${index}, ${vIdx}, 'code', this.value)" 
-                      class="w-10 p-2 bg-slate-100 rounded-lg font-black text-[10px] text-center uppercase outline-none">
-                    <select onchange="app.updateVar(${index}, ${vIdx}, 'table', this.value)" 
-                      class="flex-1 p-2 bg-slate-50 border-none rounded-lg text-[9px] font-bold outline-none text-blue-600">
-                      <option value="">Pilih Tabel...</option>
-                      ${this.allResources
-                        .map(
-                          (r) =>
-                            `<option value="${r.id}" ${
-                              v.table === r.id ? "selected" : ""
-                            }>${r.id.toUpperCase()}</option>`
-                        )
-                        .join("")}
-                    </select>
-                  </div>
-                  <select onchange="app.updateVar(${index}, ${vIdx}, 'col', this.value)" 
-                    class="w-full p-2 bg-slate-50 border-none rounded-lg text-[9px] font-bold outline-none">
-                    <option value="">Pilih Kolom...</option>
-                    ${Object.keys(this.schemaCache[v.table]?.schema || {})
+                  (r) =>
+                    `<option value="${r.id}" ${
+                      conf.table === r.id ? "selected" : ""
+                    }>${r.id.toUpperCase()}</option>`
+                )
+                .join("")}
+            </select>
+          </div>
+          <div class="${
+            conf.type === "COUNT" ? "opacity-30 pointer-events-none" : ""
+          }">
+            <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-2 tracking-widest">Kolom Target</label>
+            <select onchange="app.updateWidgetConfig(${index}, 'column', this.value)" 
+              class="w-full p-4 bg-slate-50 border-none rounded-2xl text-xs font-bold focus:ring-2 ring-purple-500/20">
+              <option value="">-- Pilih Kolom --</option>
+              ${columnOptions}
+            </select>
+          </div>
+        `
+            : `
+          <div class="md:col-span-2 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex items-center">
+            <p class="text-[10px] font-bold text-blue-600 uppercase tracking-tight">
+              <i class="fa-solid fa-circle-info mr-2"></i> Mode Formula Aktif: Kelola variabel di panel bawah.
+            </p>
+          </div>
+        `
+        }
+      </div>
+
+      ${
+        conf.type === "FORMULA"
+          ? `
+        <div class="mb-8 p-8 bg-blue-50/50 rounded-[2.5rem] border border-blue-100 animate-slide-up">
+          <div class="flex justify-between items-center mb-6">
+            <h5 class="text-[10px] font-black text-blue-500 uppercase tracking-widest">Kalkulasi Lintas Tabel</h5>
+            <button onclick="app.addVariable(${index})" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-[9px] font-black uppercase hover:bg-slate-900 transition-all shadow-md">
+              + Tambah Variabel
+            </button>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            ${conf.vars
+              .map(
+                (v, vIdx) => `
+              <div class="bg-white p-4 rounded-2xl border border-blue-100 relative group shadow-sm">
+                <div class="flex gap-2 mb-2">
+                  <input type="text" value="${
+                    v.code
+                  }" onchange="app.updateVar(${index}, ${vIdx}, 'code', this.value)" 
+                    class="w-10 p-2 bg-slate-100 rounded-lg font-black text-[10px] text-center uppercase outline-none">
+                  <select onchange="app.updateVar(${index}, ${vIdx}, 'table', this.value)" 
+                    class="flex-1 p-2 bg-slate-50 border-none rounded-lg text-[9px] font-bold outline-none text-blue-600">
+                    <option value="">Pilih Tabel...</option>
+                    ${this.allResources
                       .map(
-                        (c) =>
-                          `<option value="${c}" ${
-                            v.col === c ? "selected" : ""
-                          }>${c.toUpperCase()}</option>`
+                        (r) =>
+                          `<option value="${r.id}" ${
+                            v.table === r.id ? "selected" : ""
+                          }>${r.id.toUpperCase()}</option>`
                       )
                       .join("")}
                   </select>
-                  <button onclick="app.removeVar(${index}, ${vIdx})" class="absolute -right-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg">
-                    <i class="fa-solid fa-xmark"></i>
-                  </button>
                 </div>
-              `
-                )
-                .join("")}
-            </div>
-
-            <div>
-              <label class="block text-[9px] font-black text-blue-400 uppercase mb-2 ml-1 tracking-widest">Rumus Matematika</label>
-              <input type="text" value="${
-                conf.formula || ""
-              }" placeholder="Contoh: ({A} - {B}) / {A} * 100" 
-                onchange="app.updateWidgetConfig(${index}, 'formula', this.value)"
-                class="w-full p-5 bg-white border-2 border-blue-200 rounded-2xl font-mono text-sm font-black text-blue-700 shadow-inner outline-none focus:border-blue-500 transition-all">
-            </div>
-          </div>
-        `
-            : ""
-        }
-
-        <div class="pt-8 border-t border-slate-50 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Visual Icon</label>
-            <select onchange="app.updateWidgetConfig(${index}, 'icon', this.value)" 
-              class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
-              <option value="fa-wallet" ${conf.icon === "fa-wallet" ? "selected" : ""}>💰 Keuangan / Saldo</option>
-              <option value="fa-cart-shopping" ${conf.icon === "fa-cart-shopping" ? "selected" : ""}>🛒 Penjualan / Transaksi</option>
-              <option value="fa-users" ${conf.icon === "fa-users" ? "selected" : ""}>👥 Pelanggan / User</option>
-              <option value="fa-box-archive" ${conf.icon === "fa-box-archive" ? "selected" : ""}>📦 Stok / Inventori</option>
-              <option value="fa-chart-line" ${conf.icon === "fa-chart-line" ? "selected" : ""}>📈 Tren Data</option>
-              <option value="fa-calculator" ${conf.icon === "fa-calculator" ? "selected" : ""}>🧮 Perhitungan</option>
-            </select>
+                <select onchange="app.updateVar(${index}, ${vIdx}, 'col', this.value)" 
+                  class="w-full p-2 bg-slate-50 border-none rounded-lg text-[9px] font-bold outline-none">
+                  <option value="">Pilih Kolom...</option>
+                  ${Object.keys(this.schemaCache[v.table]?.schema || {})
+                    .map(
+                      (c) =>
+                        `<option value="${c}" ${
+                          v.col === c ? "selected" : ""
+                        }>${c.toUpperCase()}</option>`
+                    )
+                    .join("")}
+                </select>
+                <button onclick="app.removeVar(${index}, ${vIdx})" class="absolute -right-2 -top-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all shadow-lg">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            `
+              )
+              .join("")}
           </div>
 
           <div>
-            <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Tema Warna</label>
-            <select onchange="app.updateWidgetConfig(${index}, 'color', this.value)" 
-              class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
-              <optgroup label="Standar">
-                <option value="slate" ${conf.color === "slate" ? "selected" : ""}>🌑 Dark Slate</option>
-                <option value="blue" ${conf.color === "blue" ? "selected" : ""}>🔷 Ocean Blue</option>
-                <option value="emerald" ${conf.color === "emerald" ? "selected" : ""}>🟢 Forest Green</option>
-                <option value="rose" ${conf.color === "rose" ? "selected" : ""}>🔴 Vivid Red</option>
-              </optgroup>
-              <optgroup label="Premium">
-                <option value="amber" ${conf.color === "amber" ? "selected" : ""}>🔶 Golden Amber</option>
-                <option value="violet" ${conf.color === "violet" ? "selected" : ""}>🟣 Royal Violet</option>
-                <option value="cyan" ${conf.color === "cyan" ? "selected" : ""}>💎 Crystal Cyan</option>
-              </optgroup>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Satuan Unit</label>
-            <input type="text" value="${conf.unit || "Rp"}" placeholder="Rp / Pcs / %"
-              onchange="app.updateWidgetConfig(${index}, 'unit', this.value)"
-              class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold text-center outline-none">
+            <label class="block text-[9px] font-black text-blue-400 uppercase mb-2 ml-1 tracking-widest">Rumus Matematika</label>
+            <input type="text" value="${
+              conf.formula || ""
+            }" placeholder="Contoh: ({A} - {B}) / {A} * 100" 
+              onchange="app.updateWidgetConfig(${index}, 'formula', this.value)"
+              class="w-full p-5 bg-white border-2 border-blue-200 rounded-2xl font-mono text-sm font-black text-blue-700 shadow-inner outline-none focus:border-blue-500 transition-all">
           </div>
         </div>
+      `
+          : ""
+      }
 
+      <div class="pt-8 border-t border-slate-50 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Visual Icon</label>
+          <select onchange="app.updateWidgetConfig(${index}, 'icon', this.value)" 
+            class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
+            <option value="fa-wallet" ${conf.icon === "fa-wallet" ? "selected" : ""}>💰 Keuangan / Saldo</option>
+            <option value="fa-cart-shopping" ${conf.icon === "fa-cart-shopping" ? "selected" : ""}>🛒 Penjualan / Transaksi</option>
+            <option value="fa-users" ${conf.icon === "fa-users" ? "selected" : ""}>👥 Pelanggan / User</option>
+            <option value="fa-box-archive" ${conf.icon === "fa-box-archive" ? "selected" : ""}>📦 Stok / Inventori</option>
+            <option value="fa-chart-line" ${conf.icon === "fa-chart-line" ? "selected" : ""}>📈 Tren Data</option>
+            <option value="fa-calculator" ${conf.icon === "fa-calculator" ? "selected" : ""}>🧮 Perhitungan</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Tema Warna</label>
+          <select onchange="app.updateWidgetConfig(${index}, 'color', this.value)" 
+            class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold outline-none">
+            <optgroup label="Standar">
+              <option value="slate" ${conf.color === "slate" ? "selected" : ""}>🌑 Dark Slate</option>
+              <option value="blue" ${conf.color === "blue" ? "selected" : ""}>🔷 Ocean Blue</option>
+              <option value="emerald" ${conf.color === "emerald" ? "selected" : ""}>🟢 Forest Green</option>
+              <option value="rose" ${conf.color === "rose" ? "selected" : ""}>🔴 Vivid Red</option>
+            </optgroup>
+            <optgroup label="Premium">
+              <option value="amber" ${conf.color === "amber" ? "selected" : ""}>🔶 Golden Amber</option>
+              <option value="violet" ${conf.color === "violet" ? "selected" : ""}>🟣 Royal Violet</option>
+              <option value="cyan" ${conf.color === "cyan" ? "selected" : ""}>💎 Crystal Cyan</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[8px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Satuan Unit</label>
+          <input type="text" value="${conf.unit || "Rp"}" placeholder="Rp / Pcs / %"
+            onchange="app.updateWidgetConfig(${index}, 'unit', this.value)"
+            class="w-full p-4 bg-slate-50 border-none rounded-2xl text-[11px] font-bold text-center outline-none">
+        </div>
       </div>
-    `;
-      })
-      .join("");
-  },
+
+    </div>
+  `;
+    })
+    .join("");
+
+  console.log("✅ [BUILDER] Rendered widgets in editor:", this.dashboardConfigs.length);
+},
 
   // FUNGSI HANDLER BARU UNTUK ROLE
   updateWidgetRoles: function(index, selectElement) {

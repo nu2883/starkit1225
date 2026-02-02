@@ -580,7 +580,19 @@ async openForm(data = null) {
   document.getElementById("modal-title").innerText = this.editingId
     ? `EDIT ${this.currentTable.toUpperCase()}`
     : `NEW ${this.currentTable.toUpperCase()}`;
+  
+  // Tampilkan Modal
   modal.classList.replace("hidden", "flex");
+
+  // ======================================================
+  // 🔥 AUTO-SCROLL KE ATAS
+  // ======================================================
+  // Cari elemen pembungkus scrollable (biasanya modal-content atau modal itu sendiri)
+  // Kita scroll modal-nya ke posisi 0
+  modal.scrollTop = 0; 
+  // Jika modal memiliki inner container yang scrollable, tambahkan juga:
+  const modalBody = modal.querySelector(".modal-content") || modal;
+  modalBody.scrollTop = 0;
 
   // 2. Governance Setup
   const currentGov = this.modes || {};
@@ -631,8 +643,6 @@ async openForm(data = null) {
           class="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-blue-500 outline-none transition-all ${lockClass}">`;
     }
 
-    // Shield: Hidden input agar data readonly tetap terikut saat serialisasi form
-    // 🔥 PERBAIKAN: Tambahkan ID khusus agar bisa di-update nilai-nya oleh runLiveFormula
     if (isLocked) {
       html += `<input type="hidden" id="f-${f}-hidden" name="${f}" value="${this.escapeHTML(String(val))}">`;
     }
@@ -650,6 +660,15 @@ async openForm(data = null) {
   }
 
   this.runLiveFormula();
+
+  // ======================================================
+  // ⚡ AUTO-FOCUS FIELD PERTAMA
+  // ======================================================
+  // Memberi kenyamanan user agar bisa langsung mengetik
+  setTimeout(() => {
+    const firstInput = container.querySelector("input:not([type='hidden']):not([disabled]), select:not([disabled])");
+    if (firstInput) firstInput.focus();
+  }, 100);
 
   // 5. ⌨️ KEYBOARD GOVERNANCE
   if (this._formKeyHandler) {
@@ -685,7 +704,7 @@ async save() {
   // ======================================================
   const requiredInputs = form.querySelectorAll("[required]");
   const invalidFields = [];
-  
+
   requiredInputs.forEach(input => {
     const isEmpty = !input.value || !input.value.trim();
     input.classList.toggle("border-red-500", isEmpty);
@@ -702,28 +721,27 @@ async save() {
   }
 
   // ======================================================
-  // 2. DATA COLLECTION (FIXED FOR AUTOFILL/FORMULA)
+  // 2. DATA COLLECTION
   // ======================================================
   const data = {};
-  const inputs = form.querySelectorAll("input, select, textarea");
-  
-  inputs.forEach(el => { 
-    if (el.name) {
-      // 🔥 LOGIKA PENTING: Jika field disabled, ambil nilai dari hidden input pasangannya
-      if (el.disabled) {
-        const hiddenEl = document.getElementById(`f-${el.name}-hidden`);
-        data[el.name] = hiddenEl ? hiddenEl.value : el.value;
-      } else {
-        data[el.name] = el.value; 
-      }
+  form.querySelectorAll("input, select, textarea").forEach(el => {
+    if (!el.name) return;
+    if (el.disabled) {
+      const hiddenEl = document.getElementById(`f-${el.name}-hidden`);
+      data[el.name] = hiddenEl ? hiddenEl.value : el.value;
+    } else {
+      data[el.name] = el.value;
     }
   });
 
   const action = this.editingId ? "update" : "create";
-  const optimisticId = action === "create" ? `tmp-${Date.now()}` : this.editingId;
-  let realServerId = null;
 
-  // Snapshot original data untuk rollback
+  // 🔐 Anti-collision optimistic ID
+  const optimisticId =
+    action === "create"
+      ? `tmp-${crypto.randomUUID()}`
+      : this.editingId;
+
   const originalRow = this.resourceCache[this.currentTable]?.find(
     r => String(r.id) === String(this.editingId)
   );
@@ -737,16 +755,16 @@ async save() {
     }
 
     // ======================================================
-    // 3. ⚡ OPTIMISTIC UI (WORKS OFFLINE)
+    // 3. ⚡ OPTIMISTIC UI
     // ======================================================
-    if (!this.resourceCache[this.currentTable]) {
-      this.resourceCache[this.currentTable] = [];
-    }
+    this.resourceCache[this.currentTable] ??= [];
 
+    const nowIso = new Date().toISOString();
     const optimisticData = {
       ...data,
       id: optimisticId,
-      created_at: originalData ? originalData.created_at : new Date().toISOString()
+      updated_at: nowIso,
+      created_at: originalData?.created_at || nowIso
     };
 
     if (action === "create") {
@@ -757,33 +775,34 @@ async save() {
         r => String(r.id) === String(this.editingId)
       );
       if (idx !== -1) {
-        this.resourceCache[this.currentTable][idx] = { ...this.resourceCache[this.currentTable][idx], ...data };
+        this.resourceCache[this.currentTable][idx] = {
+          ...this.resourceCache[this.currentTable][idx],
+          ...data,
+          updated_at: nowIso
+        };
       }
     }
 
     this.notifyDataChange();
     this.renderTable(this.resourceCache[this.currentTable]);
-    
-    // Kunci baris agar tidak bisa di-edit saat proses sync
+
     setTimeout(() => this.lockRow(optimisticId), 50);
     this.closeForm();
 
     // ======================================================
     // 4. NETWORK CALL
     // ======================================================
+    if (!navigator.onLine) throw new Error("OFFLINE_MODE");
+
     const payload = {
       action,
       table: this.currentTable,
       token: this.token || localStorage.getItem("sk_token"),
       sheet: localStorage.getItem("sk_sheet"),
       ua: navigator.userAgent,
-      data: action === "update" ? { ...data, id: this.editingId } : data
+      data: action === "update" ? { ...data, id: this.editingId } : data,
+      fetchLatest: 20
     };
-
-    // Cek koneksi untuk handling offline secara eksplisit
-    if (!navigator.onLine) {
-       throw new Error("OFFLINE_MODE"); // Akan lari ke catch dan tetap stay di UI (Locked)
-    }
 
     const response = await fetch(DYNAMIC_ENGINE_URL, {
       method: "POST",
@@ -795,54 +814,70 @@ async save() {
     if (!result?.success) throw new Error(result?.message || "SERVER_ERROR");
 
     // ======================================================
-    // 5. 🔄 SYNC SUCCESS
+    // 5. 🔄 AUTHORITATIVE RECONCILIATION
     // ======================================================
-    if (action === "create" && result.id) {
-      const row = this.resourceCache[this.currentTable].find(r => r.id === optimisticId);
-      if (row) {
-        row.id = result.id;
-        realServerId = result.id;
-      }
+    if (Array.isArray(result.latestData)) {
+      const latestMap = new Map(
+        result.latestData.map(r => [String(r.id), r])
+      );
+
+      const preserved = this.resourceCache[this.currentTable].filter(r => {
+        const id = String(r.id);
+        if (id.startsWith("tmp-")) return false;
+        if (action === "update" && id === String(this.editingId)) {
+          return !latestMap.has(id);
+        }
+        return !latestMap.has(id);
+      });
+
+      this.resourceCache[this.currentTable] = [
+        ...result.latestData,
+        ...preserved
+      ].sort((a, b) => {
+        const ta = Date.parse(a.updated_at || a.created_at || 0);
+        const tb = Date.parse(b.updated_at || b.created_at || 0);
+        return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+      });
     }
-    this.notify("✅ Data tersimpan!", "success");
+
+    // 🔓 Unlock only after final state is known
+    const unlockIds = [optimisticId];
+    if (action === "create" && result.id) unlockIds.push(result.id);
+    unlockIds.forEach(id => this.unlockRow(id));
+
+    this.notify("✅ Data tersimpan & sinkron", "success");
 
   } catch (err) {
-    // ======================================================
-    // 6. 🔄 ROLLBACK / OFFLINE HANDLING
-    // ======================================================
     console.error("🔥 SAVE_ERROR:", err);
 
     if (err.message === "OFFLINE_MODE") {
-       this.notify("⚠️ Offline. Data disimpan lokal & dikunci.", "warning");
-       // Di sini Anda bisa menambahkan antrean ke IndexedDB untuk sync nanti
+      this.notify("⚠️ Offline. Data dikunci di lokal.", "warning");
     } else {
-      // Jika error server asli, lakukan rollback
       if (action === "create") {
-        this.resourceCache[this.currentTable] = this.resourceCache[this.currentTable].filter(r => r.id !== optimisticId);
+        this.resourceCache[this.currentTable] =
+          this.resourceCache[this.currentTable].filter(r => r.id !== optimisticId);
       } else if (originalData) {
-        const idx = this.resourceCache[this.currentTable].findIndex(r => String(r.id) === String(this.editingId));
+        const idx = this.resourceCache[this.currentTable].findIndex(
+          r => String(r.id) === String(this.editingId)
+        );
         if (idx !== -1) this.resourceCache[this.currentTable][idx] = originalData;
       }
+      this.unlockRow(optimisticId);
       this.notify("❌ Gagal: " + err.message, "error");
     }
 
   } finally {
-    // ======================================================
-    // 7. FINAL CLEANUP
-    // ======================================================
-    this.unlockRow(optimisticId);
-    if (realServerId) this.unlockRow(realServerId);
-
     this.notifyDataChange();
     this.renderTable(this.resourceCache[this.currentTable]);
-    
     this.isSubmitting = false;
+
     if (btnSave) {
       btnSave.disabled = false;
       btnSave.innerText = "COMMIT DATA";
     }
   }
-},
+}
+,
 
 });
 
