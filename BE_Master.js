@@ -310,46 +310,65 @@ function getValidatedSession(serial, token, currentFp) {
  */
 function verifySerial(p) {
   const serial = (p.serial || '').trim();
-  
-  // Pastikan Master Sheet ID benar
+  if (!serial) {
+    return { ok: false, message: 'SERIAL KOSONG' };
+  }
+
   const ss = SpreadsheetApp.openById(MASTER_SHEET_ID);
   const dataSheet = ss.getSheetByName(SHEET_DATA);
-  
+
   if (!dataSheet) {
     return { ok: false, message: 'DATABASE MASTER TIDAK DITEMUKAN' };
   }
 
   const rows = dataSheet.getDataRange().getValues();
 
-  // Mulai iterasi dari baris ke-2 (indeks 1) untuk melewati header
   for (let i = 1; i < rows.length; i++) {
     const dbSerial = (rows[i][1] || '').toString().trim();
-    const dbStatus = (rows[i][7] || '').toString().trim().toUpperCase(); // Kolom H (Status)
+    if (dbSerial.toUpperCase() !== serial.toUpperCase()) continue;
 
-    // Validasi: Serial cocok (Case Insensitive) DAN Status harus AKTIF
-    if (dbSerial.toUpperCase() === serial.toUpperCase() && dbStatus === 'AKTIF') {
-      
-      // Log verifikasi berhasil ke Master Log (Opsional)
-      if (typeof sendLog === 'function') {
-        sendLog(dbSerial, 'VERIFY_SERIAL', 'SUCCESS', 'App Name: ' + rows[i][4]);
-      }
+    const dbStatusRaw = (rows[i][7] || '').toString().trim(); // kolom STATUS
+    const dbStatus = dbStatusRaw.toUpperCase();
 
+    // 🔒 STATUS KOSONG = BELUM AKTIVASI (BUKAN ERROR)
+    if (!dbStatus) {
       return {
         ok: true,
-        serial: dbSerial,
-        appName: rows[i][4] || '', // Kolom E (app_name)
-        sheet: rows[i][3],                   // Kolom D (spreadsheet)
-        engine_url: rows[i][6]               // Kolom G (engine_url)
+        status: '',
+        message: 'LISENSI BELUM DIAKTIVASI'
       };
     }
+
+    // ❌ STATUS TIDAK DIKENAL
+    if (!['AKTIF', 'TRIAL'].includes(dbStatus)) {
+      return {
+        ok: false,
+        message: 'STATUS LISENSI TIDAK VALID'
+      };
+    }
+
+    // ✅ TRIAL / AKTIF
+    if (typeof sendLog === 'function') {
+      sendLog(dbSerial, 'VERIFY_SERIAL', 'SUCCESS', 'Status: ' + dbStatus);
+    }
+
+    return {
+      ok: true,
+      serial: dbSerial,
+      status: dbStatus.toLowerCase(), // "aktif" | "trial"
+      appName: rows[i][4] || '',
+      sheet: rows[i][3] || '',
+      engine_url: rows[i][6] || ''
+    };
   }
 
-  // Jika setelah looping tidak ditemukan serial yang cocok atau status non-aktif
-  return { 
-    ok: false, 
-    message: 'SERIAL TIDAK VALID/NONAKTIF' 
+  // ❌ SERIAL TIDAK ADA DI MASTER
+  return {
+    ok: false,
+    message: 'SERIAL TIDAK DITEMUKAN'
   };
 }
+
 
 function computeSecureHash(password, salt) {
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password + salt);

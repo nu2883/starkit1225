@@ -74,60 +74,137 @@ showLogin() {
     
   },
 
-  msg(text) {
-    const el = document.getElementById('login-msg');
-    if (el) {
-      el.textContent = text;
-      el.classList.remove('hidden');
-      // Beri warna merah jika ada kata "Gagal" atau "Salah"
-      el.className = text.toLowerCase().includes('gagal') || text.toLowerCase().includes('tidak valid') 
-        ? "text-center text-xs font-bold text-red-500 mt-4" 
-        : "text-center text-xs font-bold text-blue-500 mt-4";
-    }
-  },
+
+  msg(html) {
+  const el = document.getElementById('login-msg');
+  if (!el) return;
+
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+},
+
+hideMsg() {
+  const el = document.getElementById('login-msg');
+  if (!el) return;
+
+  el.innerHTML = '';
+  el.classList.add('hidden');
+}
+,
+
 
 async verifySerial() {
-    const input = document.getElementById('serial-input');
-    const serial = input.value.trim();
-    
-    if (!serial) return this.msg('Serial wajib diisi');
-    this.msg('Verifikasi Lisensi & Mencari Engine...');
+  const input = document.getElementById('serial-input');
+  const serial = input.value.trim();
 
-    try {
-      const res = await fetch(BASE_MASTER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'verifySerial', serial })
-      });
+  if (!serial) {
+    this.msg('Serial wajib diisi');
+    return;
+  }
 
-      const data = await res.json();
+  this.msg('Verifikasi Lisensi & Status Engine...');
 
-      if (data.ok && data.sheet && data.engine_url) {
-        // --- PROSES SIMPAN IDENTITAS ---
-        localStorage.setItem('sk_serial', serial);
-        localStorage.setItem('sk_sheet', data.sheet); 
-        localStorage.setItem('sk_engine_url', data.engine_url);
-        
-        // Simpan App Name dari BE (Jika kosong gunakan default)
-        const finalAppName = data.appName || 'Starkit';
-        localStorage.setItem('sk_app_name', finalAppName);
-        
-        // --- UPDATE UI IDENTITY ---
-        this.targetEngine = data.engine_url;
-        this.msg('Lisensi Aktif & Engine Terhubung!');
-        
-        // Opsional: Langsung ubah judul aplikasi di layar
-        const titleEl = document.getElementById('app-display-name');
-        if (titleEl) titleEl.innerText = finalAppName;
+  try {
+    const res = await fetch(BASE_MASTER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'verifySerial',
+        serial: serial
+      })
+    });
 
-        setTimeout(() => this.showLogin(), 800);
-      } else {
-        this.msg(data.message || 'Serial tidak valid / Expired');
-      }
-    } catch (err) {
-      this.msg('Gagal koneksi ke Master Server');
+    const data = await res.json();
+    // console.log('[VERIFY SERIAL RESPONSE]', data);
+
+    // ❌ SERIAL TIDAK VALID
+    if (!data || data.ok !== true) {
+      this.msg(data?.message || 'Serial tidak valid / Expired');
+      return;
     }
-  },
+
+    const status = String(data.status || '').toLowerCase().trim();
+
+    // 🚨 BELUM AKTIVASI → HARD LOCK + LINK AKTIVASI
+    if (status === '') {
+      localStorage.clear();
+
+this.msg(`
+  <div class="space-y-2 text-center">
+    <div class="text-red-600 font-black text-sm">
+      🚫 LISENSI BELUM DIAKTIVASI
+    </div>
+
+    <div class="text-slate-600 text-[11px] normal-case leading-relaxed">
+      Engine dalam kondisi terkunci.<br>
+      Silakan lakukan aktivasi lisensi terlebih dahulu.
+    </div>
+
+    <a
+      href="https://nu2883.github.io/starkit1225/LP"
+      target="_blank"
+      class="inline-block mt-2 text-blue-600 font-black text-[11px] underline hover:text-blue-800 normal-case"
+    >
+      👉 Klik di sini untuk Aktivasi Lisensi
+    </a>
+  </div>
+`);
+
+
+      return;
+    }
+
+    // ❌ STATUS TIDAK SAH
+    if (status !== 'trial' && status !== 'aktif') {
+      this.msg(`
+        <span class="text-red-600 font-black">
+          Status lisensi tidak valid. Hubungi admin.
+        </span>
+      `);
+      return;
+    }
+
+    // ❌ ENGINE BELUM SIAP
+    if (!data.sheet || !data.engine_url) {
+      this.msg(`
+        <span class="text-red-600 font-black">
+          Engine belum dikonfigurasi. Hubungi admin.
+        </span>
+      `);
+      return;
+    }
+
+    // ✅ AMAN → SIMPAN
+    localStorage.setItem('sk_serial', serial);
+    localStorage.setItem('sk_sheet', data.sheet);
+    localStorage.setItem('sk_engine_url', data.engine_url);
+    localStorage.setItem('sk_status', status);
+
+    const finalAppName = data.appName || 'Starkit';
+    localStorage.setItem('sk_app_name', finalAppName);
+
+    this.targetEngine = data.engine_url;
+
+    this.msg(
+      status === 'trial'
+        ? '🧪 Mode TRIAL aktif'
+        : '✅ Lisensi AKTIF & Engine Terhubung'
+    );
+
+    setTimeout(() => {
+      this.hideMsg?.();
+      this.showLogin();
+    }, 800);
+
+  } catch (err) {
+    console.error(err);
+    this.msg('❌ Gagal koneksi ke Master Server');
+  }
+}
+
+
+
+,
 
   async login() {
     const emailEl = document.getElementById('login-email');
