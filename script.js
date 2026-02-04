@@ -731,6 +731,7 @@ async shoutToMaster(errorContext = null) {
 },
 
 async init() {
+
   if (!this.token) return;
 
   if (!this.role) this.role = localStorage.getItem("sk_role") || "";

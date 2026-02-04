@@ -8,28 +8,77 @@
 
 const BASE_MASTER_URL = 'https://script.google.com/macros/s/AKfycbzxyqu9WRYexe3L5Cq0m_akDlw6J7ZSrINpQk7XgHDN1HSyATtJCs_IQQreJSPj0TW8/exec';
 
+// === SIMPLE MASKING (AWAM-PROOF) ===
+const _enc = (s) => btoa(unescape(encodeURIComponent(s)));
+const _dec = (s) => decodeURIComponent(escape(atob(s)));
+
+const _k = (name) =>
+  _enc(name.split('').reverse().join('') + '::stk');
+
+function _setMasked(key, value) {
+  localStorage.setItem(_k(key), _enc(JSON.stringify(value)));
+}
+
+function _getMasked(key) {
+  try {
+    const raw = localStorage.getItem(_k(key));
+    if (!raw) return null;
+    return JSON.parse(_dec(raw));
+  } catch {
+    return null;
+  }
+}
+
+function _removeMasked(key) {
+  localStorage.removeItem(_k(key));
+}
+
+function enforceReverifyIfExpired() {
+  const meta = _getMasked('verify_at');
+  if (!meta || !meta.t) return;
+
+  const days = (Date.now() - meta.t) / (1000 * 60 * 60 * 24);
+  if (days >= 7) {
+    localStorage.clear();
+    location.reload(); // cukup ini, sesuai permintaanmu
+  }
+
+  //  const minutes =
+  //   (Date.now() - meta.t) / (1000 * 60);
+
+  // // ⏳ TEST MODE: EXPIRE 15 MENIT
+  // if (minutes >= 5) {
+  //   localStorage.clear();
+  //   location.reload();
+  // }
+}
+
+
+
+
 const auth = {
-  init() {
-    const serial = localStorage.getItem('sk_serial');
-    const token = localStorage.getItem('sk_token');
-    this.targetEngine = localStorage.getItem('sk_engine_url');
+init() {
+  // ⏳ CEK KADALUARSA TRIAL (PALING AWAL)
+  enforceReverifyIfExpired();
 
-    // --- 🚀 SYNC BRANDING AWAL ---
-    // Pastikan nama aplikasi di Tab & Navbar langsung berubah saat web dibuka
-    this.applyBranding();
+  const serial = localStorage.getItem('sk_serial');
+  const token = localStorage.getItem('sk_token');
+  this.targetEngine = localStorage.getItem('sk_engine_url');
 
-    // Tambahkan Event Listener Keyboard secara global untuk kenyamanan user
-    this.setupKeyboardListeners();
+  // Branding sync
+  this.applyBranding();
+  this.setupKeyboardListeners();
 
-    if (!serial) {
-      this.showSerial();
-    } else if (!token) {
-      this.showLogin();
-    } else {
-      document.getElementById('login-screen').classList.add('hidden');
-      if (window.app && window.app.init) window.app.init();
-    }
-  },
+  if (!serial) {
+    this.showSerial();
+  } else if (!token) {
+    this.showLogin();
+  } else {
+    document.getElementById('login-screen')?.classList.add('hidden');
+    if (window.app && window.app.init) window.app.init();
+  }
+}
+,
 
   // Fitur Baru: Handler Enter Key agar user tidak perlu klik mouse
   setupKeyboardListeners() {
@@ -93,6 +142,8 @@ hideMsg() {
 ,
 
 
+
+
 async verifySerial() {
   const input = document.getElementById('serial-input');
   const serial = input.value.trim();
@@ -115,75 +166,62 @@ async verifySerial() {
     });
 
     const data = await res.json();
-    // console.log('[VERIFY SERIAL RESPONSE]', data);
 
-    // ❌ SERIAL TIDAK VALID
+    // ❌ GAGAL / BELUM AKTIVASI
     if (!data || data.ok !== true) {
-      this.msg(data?.message || 'Serial tidak valid / Expired');
+      if (data?.message === 'LISENSI BELUM DIAKTIVASI') {
+        localStorage.clear();
+        this.msg(`
+          <div class="space-y-2 text-center">
+            <div class="text-red-600 font-black text-sm">
+              🚫 LISENSI BELUM DIAKTIVASI
+            </div>
+            <a
+              href="https://nu2883.github.io/starkit1225/LP"
+              target="_blank"
+              class="text-blue-600 font-black underline text-xs"
+            >
+              👉 Aktivasi Lisensi
+            </a>
+          </div>
+        `);
+        return;
+      }
+
+      this.msg(data?.message || 'Serial tidak valid');
       return;
     }
 
-    const status = String(data.status || '').toLowerCase().trim();
-
-    // 🚨 BELUM AKTIVASI → HARD LOCK + LINK AKTIVASI
-    if (status === '') {
-      localStorage.clear();
-
-this.msg(`
-  <div class="space-y-2 text-center">
-    <div class="text-red-600 font-black text-sm">
-      🚫 LISENSI BELUM DIAKTIVASI
-    </div>
-
-    <div class="text-slate-600 text-[11px] normal-case leading-relaxed">
-      Engine dalam kondisi terkunci.<br>
-      Silakan lakukan aktivasi lisensi terlebih dahulu.
-    </div>
-
-    <a
-      href="https://nu2883.github.io/starkit1225/LP"
-      target="_blank"
-      class="inline-block mt-2 text-blue-600 font-black text-[11px] underline hover:text-blue-800 normal-case"
-    >
-      👉 Klik di sini untuk Aktivasi Lisensi
-    </a>
-  </div>
-`);
-
-
-      return;
-    }
+    const status = String(data.status || '').toLowerCase();
 
     // ❌ STATUS TIDAK SAH
     if (status !== 'trial' && status !== 'aktif') {
-      this.msg(`
-        <span class="text-red-600 font-black">
-          Status lisensi tidak valid. Hubungi admin.
-        </span>
-      `);
+      this.msg('Status lisensi tidak valid');
       return;
     }
 
     // ❌ ENGINE BELUM SIAP
     if (!data.sheet || !data.engine_url) {
-      this.msg(`
-        <span class="text-red-600 font-black">
-          Engine belum dikonfigurasi. Hubungi admin.
-        </span>
-      `);
+      this.msg('Engine belum dikonfigurasi');
       return;
     }
 
-    // ✅ AMAN → SIMPAN
+    // ✅ SIMPAN DATA ENGINE
     localStorage.setItem('sk_serial', serial);
     localStorage.setItem('sk_sheet', data.sheet);
     localStorage.setItem('sk_engine_url', data.engine_url);
     localStorage.setItem('sk_status', status);
-
-    const finalAppName = data.appName || 'Starkit';
-    localStorage.setItem('sk_app_name', finalAppName);
+    localStorage.setItem('sk_app_name', data.appName || 'Starkit');
 
     this.targetEngine = data.engine_url;
+
+    // ⏳ SIMPAN WAKTU VERIFIKASI (TRIAL SAJA)
+    if (status === 'trial' && !_getMasked('verify_at')) {
+      _setMasked('verify_at', {
+        t: Date.now(),
+        v: 1
+      });
+    }
 
     this.msg(
       status === 'trial'
@@ -201,6 +239,7 @@ this.msg(`
     this.msg('❌ Gagal koneksi ke Master Server');
   }
 }
+
 
 
 
